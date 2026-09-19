@@ -1,0 +1,109 @@
+{% extends "studio/base.html" %}
+
+{% block title %}{{ quiz.title }} — Студия KLIK{% endblock %}
+
+{% block content %}
+  <div class="page-head">
+    <div>
+      <a class="link-back" href="{% url 'studio:index' %}">← Все тесты</a>
+      <h1 class="page-title">{{ quiz.title }}</h1>
+      <p class="page-lead">
+        <span class="swatch" style="background: {{ quiz.module.category.bg_color }}" aria-hidden="true"></span>
+        {{ quiz.module.category.name }} · {{ quiz.module.title }} · {{ quiz.duration_minutes }} мин
+      </p>
+    </div>
+    <div class="page-head__status">
+      {% if quiz.is_active %}
+        <span class="badge badge--on">показывается на сайте</span>
+      {% else %}
+        <span class="badge badge--muted">скрыт</span>
+      {% endif %}
+      <form method="post" action="{% url 'studio:test-toggle' quiz.pk %}">
+        {% csrf_token %}
+        <button type="submit" class="btn btn--ghost btn--sm">
+          {% if quiz.is_active %}Скрыть с сайта{% else %}Показать на сайте{% endif %}
+        </button>
+      </form>
+    </div>
+  </div>
+
+  <section class="card">
+    <div class="card__head">
+      <h2 class="card__title">Вопросы <span class="card__count">{{ questions|length }}</span></h2>
+      <a class="btn btn--primary btn--sm" href="{% url 'studio:question-create' quiz.pk %}">
+        Добавить вопрос
+      </a>
+    </div>
+
+    {% if questions %}
+      <ol class="questions">
+        {% for question in questions %}
+          <li class="question">
+            <div class="question__head">
+              <span class="question__position">{{ question.position }}</span>
+              <p class="question__text">{{ question.text }}</p>
+              {% if question.type == "multiple" %}
+                <span class="badge badge--muted">несколько верных</span>
+              {% endif %}
+              <a class="question__edit" href="{% url 'studio:question-edit' quiz.pk question.pk %}">
+                Изменить
+              </a>
+            </div>
+            <ul class="options">
+              {% for option in question.options.all %}
+                <li class="option{% if option.is_correct %} option--correct{% endif %}">
+                  <span class="option__mark" aria-hidden="true"></span>
+                  <span class="option__text">{{ option.text }}</span>
+                  {% if option.is_correct %}<span class="option__note">верный</span>{% endif %}
+                </li>
+              {% endfor %}
+            </ul>
+          </li>
+        {% endfor %}
+      </ol>
+    {% else %}
+      <p class="callout callout--warning">
+        В тесте пока нет вопросов: добавьте их по одному кнопкой выше или загрузите файлом.
+        Пока их нет, тест нельзя показывать на сайте.
+      </p>
+    {% endif %}
+  </section>
+
+  <section class="card">
+    <h2 class="card__title">Загрузить вопросы</h2>
+    <p class="card__lead">
+      Файл разбирается целиком до первой записи в базу: если в нём ошибка, прежние вопросы останутся на месте.
+      {% if quiz.questions_file %}
+        <br>Последний загруженный файл: <code>{{ quiz.questions_file.name }}</code>.
+      {% endif %}
+    </p>
+
+    <form class="form" method="post" action="{% url 'studio:test-upload' quiz.pk %}" enctype="multipart/form-data" novalidate>
+      {% csrf_token %}
+      {% include "studio/partials/field.html" with field=upload_form.file %}
+      {% include "studio/partials/field.html" with field=upload_form.mode %}
+      {% include "studio/partials/sample.html" %}
+      {% include "studio/partials/prompt.html" %}
+      <div class="form__actions">
+        <button type="submit" class="btn btn--primary">Загрузить</button>
+      </div>
+    </form>
+  </section>
+
+  <section class="card">
+    <h2 class="card__title">Карточка теста</h2>
+    <p class="card__lead">Название, блок и время. Вопросы этой формой не меняются.</p>
+
+    <form class="form" method="post" action="{% url 'studio:test-edit' quiz.pk %}" novalidate>
+      {% csrf_token %}
+      {% include "studio/partials/field.html" with field=edit_form.module %}
+      {% include "studio/partials/field.html" with field=edit_form.title %}
+      {% include "studio/partials/field.html" with field=edit_form.duration_minutes %}
+      {% include "studio/partials/field.html" with field=edit_form.is_active %}
+      <div class="form__actions">
+        <button type="submit" class="btn btn--primary">Сохранить</button>
+        <a class="btn btn--ghost" href="{% url 'studio:index' %}">Назад к списку</a>
+      </div>
+    </form>
+  </section>
+{% endblock %}

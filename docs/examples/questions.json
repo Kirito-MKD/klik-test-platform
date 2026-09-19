@@ -1,0 +1,136 @@
+{
+  "questions": [
+    {
+      "text": "Сколько будет 2 + 2?",
+      "options": [
+        {"text": "3"},
+        {"text": "4", "is_correct": true},
+        {"text": "5"}
+      ]
+    },
+    {
+      "text": "Сколько будет 7 − 3?",
+      "options": [
+        {"text": "4", "is_correct": true},
+        {"text": "5"},
+        {"text": "10"}
+      ]
+    },
+    {
+      "text": "Сколько будет 3 × 4?",
+      "options": [
+        {"text": "7"},
+        {"text": "12", "is_correct": true},
+        {"text": "34"}
+      ]
+    },
+    {
+      "text": "Сколько будет 20 ÷ 5?",
+      "options": [
+        {"text": "4", "is_correct": true},
+        {"text": "5"},
+        {"text": "15"}
+      ]
+    },
+    {
+      "text": "Какое число идёт сразу после 19?",
+      "options": [
+        {"text": "18"},
+        {"text": "20", "is_correct": true},
+        {"text": "21"}
+      ]
+    },
+    {
+      "text": "Выберите все чётные числа.",
+      "type": "multiple",
+      "options": [
+        {"text": "2", "is_correct": true},
+        {"text": "5"},
+        {"text": "8", "is_correct": true},
+        {"text": "9"}
+      ]
+    },
+    {
+      "text": "Сколько сантиметров в одном метре?",
+      "options": [
+        {"text": "10"},
+        {"text": "100", "is_correct": true},
+        {"text": "1000"}
+      ]
+    },
+    {
+      "text": "Сколько минут в одном часе?",
+      "options": [
+        {"text": "30"},
+        {"text": "60", "is_correct": true},
+        {"text": "100"}
+      ]
+    },
+    {
+      "text": "Какая фигура имеет три стороны?",
+      "options": [
+        {"text": "Треугольник", "is_correct": true},
+        {"text": "Квадрат"},
+        {"text": "Круг"}
+      ]
+    },
+    {
+      "text": "Сколько углов у квадрата?",
+      "options": [
+        {"text": "3"},
+        {"text": "4", "is_correct": true},
+        {"text": "6"}
+      ]
+    },
+    {
+      "text": "Что больше: 45 или 54?",
+      "options": [
+        {"text": "45"},
+        {"text": "54", "is_correct": true},
+        {"text": "Они равны"}
+      ]
+    },
+    {
+      "text": "Сколько будет 10 + 10 + 10?",
+      "options": [
+        {"text": "20"},
+        {"text": "30", "is_correct": true},
+        {"text": "110"}
+      ]
+    },
+    {
+      "text": "Выберите все числа, которые делятся на 5 без остатка.",
+      "type": "multiple",
+      "options": [
+        {"text": "10", "is_correct": true},
+        {"text": "12"},
+        {"text": "25", "is_correct": true},
+        {"text": "33"}
+      ]
+    },
+    {
+      "text": "Половина от 16 — это сколько?",
+      "options": [
+        {"text": "4"},
+        {"text": "8", "is_correct": true},
+        {"text": "12"}
+      ]
+    },
+    {
+      "text": "Сколько дней в неделе?",
+      "options": [
+        {"text": "5"},
+        {"text": "7", "is_correct": true},
+        {"text": "12"}
+      ]
+    },
+    {
+      "text": "Какое число пропущено: 2, 4, 6, …, 10?",
+      "options": [
+        {"text": "7"},
+        {"text": "8", "is_correct": true},
+        {"text": "9"}
+      ]
+    }
+  ]
+}

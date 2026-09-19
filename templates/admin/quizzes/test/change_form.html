@@ -1,0 +1,13 @@
+{% extends "admin/change_form.html" %}
+
+{# Кнопка загрузки вопросов рядом со «Смотреть на сайте» — путь контент-менеджера #}
+{% block object-tools-items %}
+  {% if original %}
+    <li>
+      <a href="{% url 'admin:quizzes_test_import_questions' original.pk %}" class="addlink">
+        Загрузить вопросы из JSON
+      </a>
+    </li>
+  {% endif %}
+  {{ block.super }}
+{% endblock %}

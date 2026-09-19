@@ -1,0 +1,67 @@
+{% extends "studio/base.html" %}
+
+{% block title %}Новый тест — Студия KLIK{% endblock %}
+
+{% block content %}
+  <div class="page-head page-head--narrow">
+    <div>
+      <a class="link-back" href="{% url 'studio:index' %}">← Все тесты</a>
+      <h1 class="page-title">Новый тест</h1>
+      <p class="page-lead">
+        Сначала карточка: где лежит тест, как называется и сколько идёт. Вопросы можно
+        набрать руками или приложить файлом — первое откроется сразу после создания.
+      </p>
+    </div>
+  </div>
+
+  <div class="layout-narrow">
+    {% if form.non_field_errors %}
+      <div class="callout callout--error">
+        {% for error in form.non_field_errors %}<p>{{ error }}</p>{% endfor %}
+      </div>
+    {% endif %}
+
+    <form class="card form" method="post" enctype="multipart/form-data" novalidate>
+      {% csrf_token %}
+
+      {% include "studio/partials/field.html" with field=form.module %}
+      <p class="field__aside">
+        Нет нужного блока?
+        <a href="{% url 'studio:module-create' %}">Создать блок</a> ·
+        <a href="{% url 'studio:category-create' %}">Создать категорию</a>
+      </p>
+
+      {% include "studio/partials/field.html" with field=form.title %}
+      {% include "studio/partials/field.html" with field=form.duration_minutes %}
+
+      <h2 class="card__title">Откуда возьмутся вопросы</h2>
+      <div class="ways">
+        <div class="way">
+          <h3 class="way__title">Набрать руками</h3>
+          <p class="way__text">
+            Оставьте поле с файлом пустым. Сразу после создания откроется страница первого
+            вопроса: текст, тип и варианты ответа. Так быстрее, когда вопросов немного.
+          </p>
+        </div>
+        <div class="way">
+          <h3 class="way__title">Загрузить файлом</h3>
+          <p class="way__text">
+            Подходит, когда вопросы уже собраны. Формат строгий — ниже лежат образец
+            и промпт, которым JSON делается из обычного текста.
+          </p>
+        </div>
+      </div>
+
+      {% include "studio/partials/field.html" with field=form.file %}
+      {% include "studio/partials/sample.html" %}
+      {% include "studio/partials/prompt.html" %}
+
+      {% include "studio/partials/field.html" with field=form.is_active %}
+
+      <div class="form__actions">
+        <button type="submit" class="btn btn--primary">Создать тест</button>
+        <a class="btn btn--ghost" href="{% url 'studio:index' %}">Отмена</a>
+      </div>
+    </form>
+  </div>
+{% endblock %}

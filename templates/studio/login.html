@@ -1,0 +1,36 @@
+{% extends "studio/base.html" %}
+
+{% block title %}Вход — Студия KLIK{% endblock %}
+
+{# На странице входа шапка со ссылками бессмысленна: идти всё равно некуда. #}
+{% block chrome %}{% endblock %}
+
+{% block content %}
+  <div class="login">
+    <div class="card login__card">
+      <div class="brand brand--lg">
+        <span class="brand__mark" aria-hidden="true"></span>
+        <span class="brand__name">KLIK</span>
+        <span class="brand__sub">Студия</span>
+      </div>
+      <h1 class="page-title">Вход для контент-менеджера</h1>
+      <p class="page-lead">Логин и пароль те же, что для админки. Если их нет — попросите у администратора.</p>
+
+      {% if form.errors %}
+        <div class="callout callout--error">
+          <p>Не подошли логин или пароль. Проверьте раскладку и регистр.</p>
+        </div>
+      {% endif %}
+
+      <form class="form" method="post" novalidate>
+        {% csrf_token %}
+        {% include "studio/partials/field.html" with field=form.username %}
+        {% include "studio/partials/field.html" with field=form.password %}
+        <input type="hidden" name="next" value="{{ next }}">
+        <div class="form__actions">
+          <button type="submit" class="btn btn--primary">Войти</button>
+        </div>
+      </form>
+    </div>
+  </div>
+{% endblock %}

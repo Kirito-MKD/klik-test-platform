@@ -1,0 +1,27 @@
+{% extends "admin/base_site.html" %}
+
+{% block breadcrumbs %}
+  <div class="breadcrumbs">
+    <a href="{% url 'admin:index' %}">Главная</a>
+    &rsaquo; <a href="{% url 'admin:quizzes_test_changelist' %}">Тесты</a>
+    &rsaquo; <a href="{% url 'admin:quizzes_test_change' original.pk %}">{{ original.title }}</a>
+    &rsaquo; Загрузка вопросов
+  </div>
+{% endblock %}
+
+{% block content %}
+  <p>
+    Файл с вопросами в строгом формате, эталон — <code>docs/examples/questions.json</code>.
+    Если в файле ошибка, страница покажет, в каком вопросе и поле она сидит,
+    а в базе ничего не изменится.
+  </p>
+
+  <form method="post" enctype="multipart/form-data">
+    {% csrf_token %}
+    {{ form.as_div }}
+    <div class="submit-row">
+      <input type="submit" value="Загрузить" class="default">
+      <a href="{% url 'admin:quizzes_test_change' original.pk %}" class="closelink">Отмена</a>
+    </div>
+  </form>
+{% endblock %}

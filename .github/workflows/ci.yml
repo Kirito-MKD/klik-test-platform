@@ -1,0 +1,77 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  DJANGO_SETTINGS_MODULE: config.settings.local
+  DJANGO_SECRET_KEY: ci-secret-not-used-in-prod
+  DJANGO_DEBUG: "false"
+  DJANGO_ALLOWED_HOSTS: localhost,127.0.0.1,testserver
+  DATABASE_URL: postgres://klik:klik@localhost:5432/klik
+
+jobs:
+  checks:
+    runs-on: ubuntu-latest
+
+    services:
+      postgres:
+        image: postgres:17-alpine
+        env:
+          POSTGRES_DB: klik
+          POSTGRES_USER: klik
+          POSTGRES_PASSWORD: klik
+        ports: ["5432:5432"]
+        options: >-
+          --health-cmd "pg_isready -U klik"
+          --health-interval 5s
+          --health-timeout 3s
+          --health-retries 10
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Установить uv
+        uses: astral-sh/setup-uv@v5
+        with:
+          enable-cache: true
+
+      - name: Поставить Python и зависимости
+        run: uv sync --frozen
+
+      - name: Линт
+        run: uv run ruff check .
+
+      - name: Формат
+        run: uv run ruff format --check .
+
+      - name: Типы (mypy)
+        run: uv run mypy .
+
+      - name: Типы (basedpyright)
+        run: uv run basedpyright
+
+      - name: Тесты
+        run: uv run pytest
+
+      - name: Миграции не отстают от моделей
+        run: uv run python manage.py makemigrations --check --dry-run
+
+      - name: Прод-образ собирается
+        # Заодно проверяется collectstatic на билде: без этого шага поломка
+        # статики всплыла бы только на деплое.
+        run: docker build --target prod -t klik-backend:ci .
+
+      - name: Аудит зависимостей
+        # Не блокирует сборку: свежая CVE не должна останавливать хотфикс,
+        # но отчёт обязан быть на виду.
+        continue-on-error: true
+        run: |
+          uv export --frozen --no-dev --no-emit-project --format requirements-txt > /tmp/requirements.txt
+          uvx pip-audit --requirement /tmp/requirements.txt

@@ -1,0 +1,82 @@
+# Продовый и staging-контур: приложение под gunicorn, база и nginx с TLS.
+# Запуск: docker compose -f compose.prod.yaml --env-file .env.prod up -d --build
+# Домен и пути к сертификатам приходят из .env.prod, см. docs/deploy.md.
+
+name: klik-prod
+
+services:
+  db:
+    image: postgres:17-alpine
+    restart: always
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB}
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    # Портов наружу нет: в базу ходят только приложение и скрипт бэкапа.
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER} -d ${POSTGRES_DB}"]
+      interval: 10s
+      timeout: 3s
+      retries: 10
+
+  app:
+    build:
+      context: .
+      target: prod
+    restart: always
+    env_file:
+      - .env.prod
+    environment:
+      DATABASE_URL: postgres://${POSTGRES_USER}:${POSTGRES_PASSWORD}@db:5432/${POSTGRES_DB}
+    volumes:
+      - media:/app/media
+      - static:/app/staticfiles
+    expose:
+      - "8000"
+    depends_on:
+      db:
+        condition: service_healthy
+    healthcheck:
+      # Тот же адрес, что и у внешнего мониторинга: проверяется и сервис, и база.
+      # Host — потому что ALLOWED_HOSTS на проде это домен, а не 127.0.0.1;
+      # X-Forwarded-Proto — иначе прод-настройки уводят запрос на https,
+      # которого внутри контейнера нет.
+      test:
+        - CMD-SHELL
+        - >-
+          python -c "import os, urllib.request as u;
+          u.urlopen(u.Request('http://127.0.0.1:8000/api/v1/health/',
+          headers={'Host': os.environ.get('KLIK_DOMAIN', 'localhost'),
+          'X-Forwarded-Proto': 'https'}), timeout=5)"
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 20s
+
+  nginx:
+    image: nginx:1.27-alpine
+    restart: always
+    depends_on:
+      - app
+    ports:
+      - "80:80"
+      - "443:443"
+    environment:
+      KLIK_DOMAIN: ${KLIK_DOMAIN}
+    volumes:
+      # Официальный образ подставит ${KLIK_DOMAIN} в шаблон при старте. Имя
+      # default.conf.template обязательно: иначе рядом останется стоковый
+      # default.conf с тем же server_name, и на 80-м порту победит он.
+      - ./deploy/nginx/klik.conf.template:/etc/nginx/templates/default.conf.template:ro
+      - ${KLIK_CERTS_DIR:-./deploy/certs}:/etc/nginx/certs:ro
+      - certbot-webroot:/var/www/certbot
+      - static:/srv/static:ro
+      - media:/srv/media:ro
+
+volumes:
+  pgdata:
+  media:
+  static:
+  certbot-webroot:

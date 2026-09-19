@@ -1,0 +1,47 @@
+# окружение
+.env
+.env.*
+!.env*.example
+.venv/
+venv/
+
+# python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.Python
+
+# django
+/media/
+/staticfiles/
+db.sqlite3
+*.log
+
+# бэкапы базы: рядом с кодом им не место
+
+# инструменты
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+coverage.xml
+htmlcov/
+
+# ide / ос
+.idea/
+.vscode/
+.DS_Store
+Thumbs.db
+/backups/
+
+# сертификаты на сервере лежат вне репозитория
+deploy/certs*/
+
+# внутренние документы в репозиторий не уезжают: журнал решений, runbook,
+# контракт API, схема БД, спецификация оформления. Лежат у команды на диске.
+/DESIGN.md
+/docs/*.md
+/docs/*.pdf
+/docs/*.http
+/docs/*.png
+/docs/archive/

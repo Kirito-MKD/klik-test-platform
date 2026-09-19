@@ -1,0 +1,68 @@
+{% load studio_assets %}<!DOCTYPE html>
+<html lang="ru">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>{% block title %}Студия KLIK{% endblock %}</title>
+  {# Шрифты с кириллицей: Manrope — заголовки, Inter — текст, JetBrains Mono — JSON. #}
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Manrope:wght@600;700;800&family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@400;500&display=swap">
+  <link rel="stylesheet" href="{% studio_asset 'studio/studio.css' %}">
+  {# Копирование промпта, лишняя строка варианта и переспрос перед удалением. #}
+  <script src="{% studio_asset 'studio/studio.js' %}" defer></script>
+</head>
+<body>
+  <a class="skip-link" href="#content">Перейти к содержимому</a>
+
+  {% block chrome %}
+    <header class="topbar">
+      <div class="topbar__inner">
+        <a class="brand" href="{% url 'studio:index' %}">
+          <span class="brand__mark" aria-hidden="true"></span>
+          <span class="brand__name">KLIK</span>
+          <span class="brand__sub">Студия</span>
+        </a>
+
+        {% if user.is_authenticated %}
+          <nav class="nav" aria-label="Разделы студии">
+            <a class="nav__link" href="{% url 'studio:index' %}"
+               {% if request.resolver_match.url_name == 'index' %}aria-current="page"{% endif %}>Тесты</a>
+            <a class="nav__link" href="{% url 'studio:test-create' %}"
+               {% if request.resolver_match.url_name == 'test-create' %}aria-current="page"{% endif %}>Новый тест</a>
+          </nav>
+
+          <div class="topbar__user">
+            <span class="topbar__name">{{ user.get_username }}</span>
+            <form method="post" action="{% url 'studio:logout' %}">
+              {% csrf_token %}
+              <button type="submit" class="btn btn--ghost btn--sm">Выйти</button>
+            </form>
+          </div>
+        {% endif %}
+      </div>
+    </header>
+  {% endblock %}
+
+  <main class="main" id="content">
+    <div class="container">
+      {% if messages %}
+        <ul class="messages">
+          {% for message in messages %}
+            <li class="callout callout--{{ message.tags|default:'info' }}">{{ message }}</li>
+          {% endfor %}
+        </ul>
+      {% endif %}
+
+      {% block content %}{% endblock %}
+    </div>
+  </main>
+
+  <footer class="footer">
+    <div class="container footer__inner">
+      <span>KLIK — платформа тестов. Вопросы набираются руками или загружаются файлом.</span>
+      {% if user.is_staff %}<a href="{% url 'admin:index' %}">Админка Django</a>{% endif %}
+    </div>
+  </footer>
+</body>
+</html>

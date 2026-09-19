@@ -1,0 +1,19 @@
+{% comment %}
+Образец формата рядом с полем файла: человек не должен уходить со страницы,
+чтобы вспомнить, как пишется `is_correct`.
+{% endcomment %}
+<details class="sample">
+  <summary class="sample__summary">Формат файла с вопросами</summary>
+  <div class="sample__body">
+    <ul class="sample__rules">
+      <li>Корень файла — объект с ключом <code>questions</code>.</li>
+      <li>У вопроса обязательны <code>text</code> и <code>options</code>; <code>type</code> по умолчанию <code>single</code>.</li>
+      <li>Вариантов от 2 до 10, верным (<code>is_correct</code>) должен быть хотя бы один.</li>
+      <li>Если верных больше одного — у вопроса ставится <code>"type": "multiple"</code>.</li>
+      <li>Порядок вопросов — порядок в массиве, номера проставятся сами.</li>
+      <li>Лишние ключи файл не примет: опечатка в названии будет названа, а не пропущена.</li>
+    </ul>
+    <pre class="sample__code"><code>{{ sample }}</code></pre>
+    <a class="btn btn--ghost btn--sm" href="{% url 'studio:sample' %}" download>Скачать образец</a>
+  </div>
+</details>

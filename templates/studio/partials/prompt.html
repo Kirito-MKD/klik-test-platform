@@ -1,0 +1,21 @@
+{% comment %}
+Промпт рядом с полем файла: материал у контент-менеджера обычно в обычном
+тексте, а формат нужен строгий. Кнопка копирует текст целиком — вставить
+остаётся в любую языковую модель вместе со своим материалом.
+{% endcomment %}
+<details class="sample">
+  <summary class="sample__summary">Промпт: сделать JSON из обычного текста</summary>
+  <div class="sample__body">
+    <p class="field__hint">
+      Скопируйте промпт, вставьте его в языковую модель и допишите снизу свой материал —
+      конспект, список фактов, страницу учебника. В ответ придёт готовый файл,
+      его останется сохранить с расширением <code>.json</code> и загрузить здесь же.
+    </p>
+    <div class="sample__actions">
+      <button type="button" class="btn btn--ghost btn--sm" data-copy="#questions-prompt">
+        Скопировать промпт
+      </button>
+    </div>
+    <pre class="sample__code sample__code--wrap" id="questions-prompt"><code>{{ prompt }}</code></pre>
+  </div>
+</details>

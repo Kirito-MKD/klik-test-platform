@@ -1,0 +1,109 @@
+{% extends "studio/base.html" %}
+
+{% block title %}Тесты — Студия KLIK{% endblock %}
+
+{% block content %}
+  <div class="page-head">
+    <div>
+      <h1 class="page-title">Тесты</h1>
+      <p class="page-lead">Всё, что загружено в платформу. Нажмите на название, чтобы посмотреть вопросы или заменить файл.</p>
+    </div>
+    <a class="btn btn--primary" href="{% url 'studio:test-create' %}">Новый тест</a>
+  </div>
+
+  {% if empty_tests %}
+    <p class="callout callout--warning">
+      Тестов без вопросов: {{ empty_tests }}. Такой тест нельзя показывать на сайте — загрузите в него файл.
+    </p>
+  {% endif %}
+
+  <form class="filters" method="get" role="search">
+    <div class="filters__field">
+      <label class="field__label" for="q">Поиск по названию</label>
+      <input type="search" id="q" name="q" value="{{ search }}" placeholder="Название теста или блока">
+    </div>
+    <div class="filters__field">
+      <label class="field__label" for="category">Категория</label>
+      <select id="category" name="category">
+        <option value="">Все категории</option>
+        {% for category in categories %}
+          <option value="{{ category.pk }}" {% if category_id == category.pk|stringformat:"s" %}selected{% endif %}>{{ category.name }}</option>
+        {% endfor %}
+      </select>
+    </div>
+    <div class="filters__actions">
+      <button type="submit" class="btn btn--ghost">Показать</button>
+      {% if search or category_id %}<a class="link-muted" href="{% url 'studio:index' %}">Сбросить</a>{% endif %}
+    </div>
+  </form>
+
+  {% if tests %}
+    <div class="card card--flush">
+      <table class="table">
+        <thead>
+          <tr>
+            <th scope="col">Тест</th>
+            <th scope="col">Категория и блок</th>
+            <th scope="col">Вопросов</th>
+            <th scope="col">На сайте</th>
+            <th scope="col" class="col--time">Изменён</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for quiz in tests %}
+            <tr>
+              <td data-label="Тест">
+                <a class="table__title" href="{% url 'studio:test-detail' quiz.pk %}">{{ quiz.title }}</a>
+                <span class="table__sub">{{ quiz.duration_minutes }} мин</span>
+              </td>
+              <td data-label="Категория и блок">
+                <span class="swatch" style="background: {{ quiz.module.category.bg_color }}" aria-hidden="true"></span>
+                {{ quiz.module.category.name }} · {{ quiz.module.title }}
+              </td>
+              <td data-label="Вопросов">
+                {% if quiz.questions_count %}
+                  {{ quiz.questions_count }}
+                {% else %}
+                  <span class="badge badge--off">нет вопросов</span>
+                {% endif %}
+              </td>
+              <td data-label="На сайте">
+                <div class="table__status">
+                  {% if quiz.is_active %}
+                    <span class="badge badge--on">показывается</span>
+                  {% else %}
+                    <span class="badge badge--muted">скрыт</span>
+                  {% endif %}
+                  <form method="post" action="{% url 'studio:test-toggle' quiz.pk %}">
+                    {% csrf_token %}
+                    <input type="hidden" name="back" value="list">
+                    <button type="submit" class="btn btn--ghost btn--sm">
+                      {% if quiz.is_active %}Скрыть{% else %}Показать{% endif %}
+                    </button>
+                  </form>
+                </div>
+              </td>
+              <td data-label="Изменён" class="col--time">{{ quiz.updated_at|date:"d.m.Y H:i" }}</td>
+            </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  {% else %}
+    <div class="empty">
+      <h2 class="empty__title">{% if search or category_id %}Ничего не нашлось{% else %}Здесь пока пусто{% endif %}</h2>
+      <p class="empty__text">
+        {% if search or category_id %}
+          Попробуйте другое название или снимите фильтр по категории.
+        {% else %}
+          Заведите первый тест: выберите блок, укажите время и загрузите файл с вопросами.
+        {% endif %}
+      </p>
+      {% if search or category_id %}
+        <a class="btn btn--ghost" href="{% url 'studio:index' %}">Показать все тесты</a>
+      {% else %}
+        <a class="btn btn--primary" href="{% url 'studio:test-create' %}">Новый тест</a>
+      {% endif %}
+    </div>
+  {% endif %}
+{% endblock %}

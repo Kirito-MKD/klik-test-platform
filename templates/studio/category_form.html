@@ -1,0 +1,27 @@
+{% extends "studio/base.html" %}
+
+{% block title %}Новая категория — Студия KLIK{% endblock %}
+
+{% block content %}
+  <div class="page-head page-head--narrow">
+    <div>
+      <a class="link-back" href="{% url 'studio:module-create' %}">← К новому блоку</a>
+      <h1 class="page-title">Новая категория</h1>
+      <p class="page-lead">Категория — это предмет. Её цвет и стикер дети видят на карточке.</p>
+    </div>
+  </div>
+
+  <div class="layout-narrow">
+    <form class="card form" method="post" enctype="multipart/form-data" novalidate>
+      {% csrf_token %}
+      {% include "studio/partials/field.html" with field=form.name %}
+      {% include "studio/partials/field.html" with field=form.bg_color %}
+      {% include "studio/partials/field.html" with field=form.image %}
+      {% include "studio/partials/field.html" with field=form.is_active %}
+      <div class="form__actions">
+        <button type="submit" class="btn btn--primary">Создать категорию</button>
+        <a class="btn btn--ghost" href="{% url 'studio:index' %}">Отмена</a>
+      </div>
+    </form>
+  </div>
+{% endblock %}

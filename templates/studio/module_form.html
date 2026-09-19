@@ -1,0 +1,29 @@
+{% extends "studio/base.html" %}
+
+{% block title %}Новый блок — Студия KLIK{% endblock %}
+
+{% block content %}
+  <div class="page-head page-head--narrow">
+    <div>
+      <a class="link-back" href="{% url 'studio:test-create' %}">← К новому тесту</a>
+      <h1 class="page-title">Новый блок</h1>
+      <p class="page-lead">Блок — это набор тестов внутри категории. Тест кладётся именно в блок.</p>
+    </div>
+  </div>
+
+  <div class="layout-narrow">
+    <form class="card form" method="post" novalidate>
+      {% csrf_token %}
+      {% include "studio/partials/field.html" with field=form.category %}
+      <p class="field__aside">
+        Нет нужной категории? <a href="{% url 'studio:category-create' %}">Создать категорию</a>
+      </p>
+      {% include "studio/partials/field.html" with field=form.title %}
+      {% include "studio/partials/field.html" with field=form.is_active %}
+      <div class="form__actions">
+        <button type="submit" class="btn btn--primary">Создать блок</button>
+        <a class="btn btn--ghost" href="{% url 'studio:index' %}">Отмена</a>
+      </div>
+    </form>
+  </div>
+{% endblock %}

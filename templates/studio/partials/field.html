@@ -1,0 +1,43 @@
+{% comment %}
+Одно поле формы. Классы на сами виджеты не вешаем: их рисует Django, а стили
+привязаны к элементам внутри `.field` — так форму не приходится переписывать
+всякий раз, когда меняется виджет.
+
+Три случая: галочка (подпись справа от квадратика), группа радиокнопок
+(fieldset с legend — у группы нет одного `id`, и `<label for="">` был бы пустым)
+и всё остальное.
+{% endcomment %}
+{% if field.field.widget.input_type == "checkbox" %}
+  <div class="field field--check{% if field.errors %} field--invalid{% endif %}">
+    <label class="field__check-label" for="{{ field.id_for_label }}">
+      {{ field }}
+      <span>{{ field.label }}</span>
+    </label>
+    {% if field.help_text %}<p class="field__hint">{{ field.help_text }}</p>{% endif %}
+    {% if field.errors %}
+      <ul class="field__errors">{% for error in field.errors %}<li>{{ error }}</li>{% endfor %}</ul>
+    {% endif %}
+  </div>
+{% elif field.field.widget.input_type == "radio" %}
+  <fieldset class="field field--radio{% if field.errors %} field--invalid{% endif %}">
+    <legend class="field__label">
+      {{ field.label }}{% if field.field.required %}<span class="field__required" title="обязательное поле">*</span>{% endif %}
+    </legend>
+    {{ field }}
+    {% if field.help_text %}<p class="field__hint">{{ field.help_text }}</p>{% endif %}
+    {% if field.errors %}
+      <ul class="field__errors">{% for error in field.errors %}<li>{{ error }}</li>{% endfor %}</ul>
+    {% endif %}
+  </fieldset>
+{% else %}
+  <div class="field{% if field.errors %} field--invalid{% endif %}">
+    <label class="field__label" for="{{ field.id_for_label }}">
+      {{ field.label }}{% if field.field.required %}<span class="field__required" title="обязательное поле">*</span>{% endif %}
+    </label>
+    {{ field }}
+    {% if field.help_text %}<p class="field__hint">{{ field.help_text }}</p>{% endif %}
+    {% if field.errors %}
+      <ul class="field__errors">{% for error in field.errors %}<li>{{ error }}</li>{% endfor %}</ul>
+    {% endif %}
+  </div>
+{% endif %}

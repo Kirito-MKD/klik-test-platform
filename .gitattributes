@@ -1,0 +1,7 @@
+# В репозитории — только LF: команда на Windows, контейнеры на Linux.
+# Без этого скрипты и Dockerfile с CRLF ломаются внутри образа.
+* text=auto eol=lf
+
+*.png binary
+*.pdf binary
+*.ico binary

@@ -1,0 +1,141 @@
+[project]
+name = "klik-backend"
+version = "0.1.0"
+description = "KLIK — платформа детских тестов, бэкенд"
+requires-python = ">=3.13"
+dependencies = [
+    "django>=5.2,<6.0",
+    "django-environ>=0.12",
+    "psycopg[binary]>=3.2",
+    "pillow>=11.0",
+    "pydantic>=2.10",
+    "djangorestframework>=3.15",
+    "django-filter>=24.3",
+    "drf-spectacular>=0.28",
+    "django-cors-headers>=4.6",
+    "gunicorn>=23.0",
+    "whitenoise>=6.8",
+    # Нужен в рантайме, а не только чекерам: monkeypatch() в настройках делает
+    # ModelAdmin[...] и ModelForm[...] подписываемыми, иначе админка не импортируется.
+    "django-stubs-ext>=6.1.1",
+]
+
+[dependency-groups]
+dev = [
+    "pytest>=8.3",
+    "pytest-django>=4.9",
+    "pytest-cov>=6.0",
+    "factory-boy>=3.3",
+    "ruff>=0.8",
+    "mypy>=1.13",
+    "django-stubs[compatible-mypy]>=5.1",
+    "djangorestframework-stubs>=3.15",
+    "basedpyright>=1.22",
+    "pre-commit>=4.0",
+    "pyyaml>=6.0",
+]
+
+# ─────────────────────────── ruff ───────────────────────────
+[tool.ruff]
+line-length = 100
+target-version = "py313"
+extend-exclude = ["*/migrations/*", "docs/"]
+
+[tool.ruff.lint]
+select = [
+    "E",   # pycodestyle errors
+    "W",   # pycodestyle warnings
+    "F",   # pyflakes
+    "I",   # isort
+    "N",   # pep8-naming
+    "UP",  # pyupgrade
+    "B",   # flake8-bugbear
+    "C4",  # flake8-comprehensions
+    "SIM", # flake8-simplify
+    "DJ",  # flake8-django
+    "S",   # bandit
+    "RUF",
+]
+ignore = [
+    # Комментарии и докстроки у нас на русском: правила про «похожие на латиницу»
+    # символы здесь дают только шум.
+    "RUF001",
+    "RUF002",
+    "RUF003",
+]
+
+[tool.ruff.lint.per-file-ignores]
+"config/settings/*.py" = ["F403", "F405"]  # звёздочный импорт из base — идиома Django
+"tests/*.py" = ["S101", "S106"]            # assert и тестовые пароли — это норма
+"conftest.py" = ["S105"]                   # тестовый SECRET_KEY в переменных окружения
+
+# ─────────────────────────── mypy ───────────────────────────
+[tool.mypy]
+python_version = "3.13"
+strict = true
+warn_unused_configs = true
+warn_redundant_casts = true
+warn_unused_ignores = true
+plugins = ["mypy_django_plugin.main"]
+# У factory-boy не типизированы __init__ деклараций (Sequence, SubFactory):
+# исключаем вызовы к нему, к нашему коду строгость остаётся прежней.
+untyped_calls_exclude = ["factory"]
+exclude = ["migrations/", "docs/"]
+
+[tool.django-stubs]
+django_settings_module = "config.settings.local"
+
+[[tool.mypy.overrides]]
+module = ["config.settings.*"]
+disallow_untyped_defs = false
+
+[[tool.mypy.overrides]]
+module = ["environ.*"]
+ignore_missing_imports = true
+
+[[tool.mypy.overrides]]
+# factory/__init__.py реэкспортирует имена без __all__ — под strict это ошибка импорта.
+module = ["factory.*"]
+implicit_reexport = true
+
+# ──────────────────────── basedpyright ──────────────────────
+[tool.basedpyright]
+pythonVersion = "3.13"
+typeCheckingMode = "standard"
+include = ["config", "apps", "tests", "conftest.py"]
+exclude = ["**/__pycache__", "**/migrations", ".venv"]
+venvPath = "."
+venv = ".venv"
+reportMissingTypeStubs = false
+# Вложенный class Meta наследуется от Meta абстрактной модели — базовый приём
+# Django, а для pyright это несовместимое переопределение атрибута класса.
+reportIncompatibleVariableOverride = false
+reportUnknownMemberType = false
+reportUnknownArgumentType = false
+reportUnknownVariableType = false
+
+# ────────────────────────── pytest ──────────────────────────
+[tool.pytest.ini_options]
+DJANGO_SETTINGS_MODULE = "config.settings.local"
+testpaths = ["tests"]
+python_files = ["test_*.py"]
+addopts = [
+    "-q",
+    "--cov=config",
+    "--cov=apps",
+    "--cov-report=term-missing",
+    "--cov-fail-under=70",
+]
+
+[tool.coverage.run]
+branch = true
+omit = [
+    "*/migrations/*",
+    "config/wsgi.py",
+    "config/asgi.py",
+    "manage.py",
+]
+
+[tool.coverage.report]
+show_missing = true
+exclude_lines = ["pragma: no cover", "if TYPE_CHECKING:"]

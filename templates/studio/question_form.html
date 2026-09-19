@@ -1,0 +1,117 @@
+{% extends "studio/base.html" %}
+
+{% block title %}{% if question %}Вопрос {{ question.position }}{% else %}Новый вопрос{% endif %} — Студия KLIK{% endblock %}
+
+{% block content %}
+  <div class="page-head page-head--narrow">
+    <div>
+      <a class="link-back" href="{% url 'studio:test-detail' quiz.pk %}">← {{ quiz.title }}</a>
+      <h1 class="page-title">
+        {% if question %}Вопрос {{ question.position }}{% else %}Новый вопрос{% endif %}
+      </h1>
+      <p class="page-lead">
+        {% if question %}
+          Правки видны на сайте сразу после сохранения.
+        {% else %}
+          Вопрос встанет в конец теста. Файл для этого не нужен.
+        {% endif %}
+      </p>
+    </div>
+  </div>
+
+  <div class="layout-narrow">
+    <form class="form" method="post" novalidate>
+      {% csrf_token %}
+
+      <section class="card">
+        <h2 class="card__title">Вопрос</h2>
+        {% include "studio/partials/field.html" with field=form.text %}
+        {% include "studio/partials/field.html" with field=form.type %}
+      </section>
+
+      <section class="card">
+        <h2 class="card__title">Варианты ответа</h2>
+        <p class="card__lead">
+          От 2 до 10 вариантов. Отметьте верный — у вопроса с одним верным ответом
+          отметка может быть только одна.
+        </p>
+
+        {{ options.management_form }}
+
+        {% if options.non_form_errors %}
+          <div class="callout callout--error">
+            {% for error in options.non_form_errors %}<p>{{ error }}</p>{% endfor %}
+          </div>
+        {% endif %}
+
+        <div class="options-editor" id="options-editor">
+          {% for option in options %}
+            <div class="option-row{% if option.errors %} option-row--invalid{% endif %}">
+              {{ option.id }}
+              <span class="option-row__number" aria-hidden="true"></span>
+              <div class="option-row__text">
+                <label class="sr-only" for="{{ option.text.id_for_label }}">Текст варианта</label>
+                {{ option.text }}
+                {% if option.text.errors %}
+                  <ul class="field__errors">
+                    {% for error in option.text.errors %}<li>{{ error }}</li>{% endfor %}
+                  </ul>
+                {% endif %}
+              </div>
+              <div class="option-row__flags">
+                <label class="chip chip--correct" for="{{ option.is_correct.id_for_label }}">
+                  {{ option.is_correct }}<span>верный</span>
+                </label>
+                {% if option.DELETE %}
+                  <label class="chip chip--remove" for="{{ option.DELETE.id_for_label }}">
+                    {{ option.DELETE }}<span>убрать</span>
+                  </label>
+                {% endif %}
+              </div>
+            </div>
+          {% endfor %}
+        </div>
+
+        {# Заготовка для кнопки «добавить вариант»: скрипт подставляет номер строки. #}
+        <template id="option-row-template">
+          <div class="option-row">
+            {{ options.empty_form.id }}
+            <span class="option-row__number" aria-hidden="true"></span>
+            <div class="option-row__text">{{ options.empty_form.text }}</div>
+            <div class="option-row__flags">
+              <label class="chip chip--correct">{{ options.empty_form.is_correct }}<span>верный</span></label>
+            </div>
+          </div>
+        </template>
+
+        <button type="button" class="btn btn--ghost btn--sm" data-add-row="#options-editor">
+          Добавить вариант
+        </button>
+      </section>
+
+      <div class="form__actions form__actions--flush">
+        <button type="submit" class="btn btn--primary">
+          {% if question %}Сохранить{% else %}Добавить вопрос{% endif %}
+        </button>
+        <a class="btn btn--ghost" href="{% url 'studio:test-detail' quiz.pk %}">Отмена</a>
+      </div>
+    </form>
+
+    {% if question %}
+      <form class="danger-zone" method="post"
+            action="{% url 'studio:question-delete' quiz.pk question.pk %}">
+        {% csrf_token %}
+        <div>
+          <h2 class="danger-zone__title">Удалить вопрос</h2>
+          <p class="danger-zone__text">
+            Уйдёт вместе с вариантами ответа, остальные вопросы перенумеруются.
+          </p>
+        </div>
+        <button type="submit" class="btn btn--danger"
+                data-confirm="Удалить вопрос {{ question.position }}? Отменить будет нельзя.">
+          Удалить
+        </button>
+      </form>
+    {% endif %}
+  </div>
+{% endblock %}
