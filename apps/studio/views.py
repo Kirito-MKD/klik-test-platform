@@ -25,7 +25,12 @@ from apps.quizzes.services.import_questions import (
     QuestionsFileError,
     import_questions_from_file,
 )
-from apps.quizzes.services.questions import has_questions, next_position, renumber
+from apps.quizzes.services.questions import (
+    active_test_of,
+    has_questions,
+    next_position,
+    renumber,
+)
 from apps.studio.forms import (
     CategoryForm,
     ModuleForm,
@@ -204,7 +209,8 @@ def test_toggle_active(request: HttpRequest, test_id: int) -> HttpResponse:
     Отдельное действие, а не галочка в форме: скрыть тест обычно нужно быстро
     и прямо из списка, не открывая карточку и не трогая остальные поля.
     """
-    quiz = get_object_or_404(Test, pk=test_id)
+    quiz = get_object_or_404(Test.objects.select_related("module"), pk=test_id)
+    busy = active_test_of(quiz.module, besides=quiz)
 
     if quiz.is_active:
         quiz.is_active = False
@@ -212,6 +218,13 @@ def test_toggle_active(request: HttpRequest, test_id: int) -> HttpResponse:
         messages.success(request, f"Тест «{quiz.title}» скрыт с сайта.")
     elif not has_questions(quiz):
         messages.error(request, EMPTY_TEST_REFUSAL)
+    elif busy is not None:
+        # Блок показывает один тест: тот же запрет, что в форме и в базе.
+        messages.error(
+            request,
+            f"В блоке «{quiz.module.title}» уже показывается тест «{busy.title}». "
+            "Сначала скройте его.",
+        )
     else:
         quiz.is_active = True
         quiz.save(update_fields=["is_active", "updated_at"])

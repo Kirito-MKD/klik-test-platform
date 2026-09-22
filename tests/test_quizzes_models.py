@@ -35,6 +35,31 @@ def test_title_is_unique_inside_module() -> None:
         TestFactory.create(module=quiz.module, title="Сложение дробей")
 
 
+def test_only_one_active_test_per_module() -> None:
+    """Блок показывает один тест: второй активный база не примет."""
+    quiz = TestFactory.create(is_active=True)
+
+    with pytest.raises(IntegrityError), transaction.atomic():
+        TestFactory.create(module=quiz.module, is_active=True)
+
+
+def test_hidden_tests_in_a_module_are_not_limited() -> None:
+    """Скрытых тестов в блоке сколько угодно — ограничение только на активные."""
+    quiz = TestFactory.create(is_active=True)
+
+    TestFactory.create_batch(3, module=quiz.module, is_active=False)
+
+    assert Test.objects.filter(module=quiz.module).count() == 4
+
+
+def test_active_test_may_repeat_in_another_module() -> None:
+    """Ограничение живёт внутри блока: в соседнем блоке свой активный тест."""
+    TestFactory.create(is_active=True)
+    TestFactory.create(is_active=True)
+
+    assert Test.objects.filter(is_active=True).count() == 2
+
+
 def test_title_may_repeat_in_another_module() -> None:
     """Уникальность в рамках блока: в соседнем блоке то же название допустимо."""
     TestFactory.create(title="Итоговый")

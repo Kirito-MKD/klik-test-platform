@@ -22,7 +22,7 @@ from apps.catalog.admin import CategoryAdmin
 from apps.catalog.models import Category, Module
 from apps.common.management.commands.setup_content_group import CONTENT_GROUP_NAME
 from apps.quizzes.admin import QuestionAdmin, TestAdmin
-from apps.quizzes.models import AnswerOption, Question, Test
+from apps.quizzes.models import ACTIVE_TEST_EXISTS, AnswerOption, Question, Test
 from tests.factories import (
     AnswerOptionFactory,
     CategoryFactory,
@@ -151,7 +151,9 @@ def test_test_list_does_not_query_per_row(admin_client: Client) -> None:
     with CaptureQueriesContext(connection) as one_row:
         admin_client.get(url)
 
-    TestFactory.create_batch(4, module=module)
+    # Активный тест в блоке только один, поэтому соседи скрытые: для проверки
+    # числа запросов это роли не играет.
+    TestFactory.create_batch(4, module=module, is_active=False)
     with CaptureQueriesContext(connection) as five_rows:
         admin_client.get(url)
 
@@ -169,6 +171,25 @@ def test_test_without_questions_cannot_be_published(admin_client: Client) -> Non
 
     assert response.status_code == 200
     assert "Тест без вопросов нельзя показывать на сайте" in response.content.decode()
+    assert Test.objects.get(pk=quiz.pk).is_active is False
+
+
+def test_second_active_test_in_a_module_is_refused(admin_client: Client) -> None:
+    """Блок показывает один тест: админка тоже не даёт включить второй.
+
+    Сообщение приходит из констрейнта базы, поэтому оно одно на все места,
+    где тест пробуют показать на сайте.
+    """
+    busy = TestFactory.create(is_active=True)
+    quiz = TestFactory.create(module=busy.module, is_active=False)
+
+    response = admin_client.post(
+        reverse("admin:quizzes_test_change", args=[quiz.pk]),
+        data=quiz_form(quiz, is_active=True, questions=2),
+    )
+
+    assert response.status_code == 200
+    assert ACTIVE_TEST_EXISTS in response.content.decode()
     assert Test.objects.get(pk=quiz.pk).is_active is False
 
 

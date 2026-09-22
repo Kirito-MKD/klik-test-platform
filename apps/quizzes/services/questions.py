@@ -9,6 +9,7 @@
 from django.db import transaction
 from django.db.models import Max
 
+from apps.catalog.models import Module
 from apps.quizzes.models import Question, Test
 
 
@@ -25,6 +26,19 @@ def has_questions(test: Test) -> bool:
     в админке, в правке карточки и в кнопке «показать на сайте».
     """
     return Question.objects.filter(test=test).exists()
+
+
+def active_test_of(module: Module, besides: Test | None = None) -> Test | None:
+    """Тест, который уже показывается в этом блоке.
+
+    Блок показывает один тест, это держит констрейнт базы. Формы и кнопки
+    спрашивают заранее, чтобы вместо ошибки базы человек увидел, какой именно
+    тест занимает место.
+    """
+    others = Test.objects.filter(module=module, is_active=True)
+    if besides is not None and besides.pk:
+        others = others.exclude(pk=besides.pk)
+    return others.first()
 
 
 @transaction.atomic

@@ -1,4 +1,4 @@
-"""Тесты: карточки тестов блока, вопросы с вариантами и проверка ответа.
+"""Тесты: карточка теста блока, вопросы с вариантами и проверка ответа.
 
 Верные ответы наружу не отдаются: вместе с вариантами они были бы видны
 в «Сети» браузера, и тест перестал бы быть проверкой. Правильность выясняется
@@ -14,7 +14,6 @@ from rest_framework.request import Request
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
-from apps.catalog.models import Module
 from apps.quizzes.models import AnswerOption, Question, Test
 
 
@@ -63,37 +62,34 @@ class AnswerCheckResultSerializer(serializers.Serializer[dict[str, bool]]):
 
 
 @extend_schema(
-    summary="Активные тесты блока",
+    summary="Активный тест блока",
     description=(
-        "Плоский список без пагинации: в блоке может быть несколько активных "
-        "тестов. 404 — если блок скрыт или его нет; пустой массив — если блок "
-        "есть, но показывать в нём пока нечего."
+        "Тест, который показывается в блоке. Активный тест в блоке один, "
+        "это держит констрейнт базы. 404 — если блок скрыт, его нет "
+        "или показывать в нём пока нечего."
     ),
 )
-class ModuleTestsView(generics.ListAPIView[Test]):
-    """Активные тесты блока по `module_id`, по порядку названия."""
+class ModuleTestView(generics.RetrieveAPIView[Test]):
+    """Активный тест блока по `module_id`."""
 
     __test__ = False
 
     serializer_class = TestSerializer
-    # Тесты одного блока — это один экран, разбивать его на страницы незачем.
-    pagination_class = None
 
-    def get_queryset(self) -> QuerySet[Test]:
-        # Блок проверяем отдельно: у скрытого блока и у блока без тестов
-        # ответы должны различаться — 404 против пустого массива.
-        module_is_visible = Module.objects.filter(
-            pk=self.kwargs["module_id"], is_active=True, category__is_active=True
-        ).exists()
-        if not module_is_visible:
-            raise NotFound("Блок не найден.")
-
-        return (
+    def get_object(self) -> Test:
+        quiz = (
             Test.objects.active()
             .with_question_count()
-            .filter(module_id=self.kwargs["module_id"])
-            .order_by("title", "id")
+            .filter(
+                module_id=self.kwargs["module_id"],
+                module__is_active=True,
+                module__category__is_active=True,
+            )
+            .first()
         )
+        if quiz is None:
+            raise NotFound("Активный тест для этого блока не найден.")
+        return quiz
 
 
 @extend_schema(

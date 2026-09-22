@@ -25,7 +25,7 @@ from apps.api.exceptions import VALIDATION_MESSAGE, api_exception_handler, split
 from apps.api.pagination import PageNumberPagination
 from apps.api.v1.catalog import ModuleListView
 from apps.api.v1.health import HealthView
-from apps.api.v1.quizzes import ModuleTestsView, TestQuestionsView
+from apps.api.v1.quizzes import TestQuestionsView
 from apps.quizzes.models import Question
 from tests.factories import (
     AnswerOptionFactory,
@@ -42,9 +42,9 @@ CHECK = "/api/v1/answers/check/"
 HEALTH = "/api/v1/health/"
 
 
-def module_tests_url(module_id: int) -> str:
-    """Адрес второго запроса контракта — активные тесты блока."""
-    return f"/api/v1/modules/{module_id}/tests/"
+def module_test_url(module_id: int) -> str:
+    """Адрес второго запроса контракта — активный тест блока."""
+    return f"/api/v1/modules/{module_id}/test/"
 
 
 def questions_url(test_id: int) -> str:
@@ -157,80 +157,57 @@ def test_modules_list_does_not_query_per_row(client: Client) -> None:
 # ─── 2. Активный тест блока ─────────────────────────────────────────
 
 
-def test_module_tests_return_the_cards(client: Client) -> None:
+def test_module_test_returns_the_card(client: Client) -> None:
     """Карточка теста: id, название, количество вопросов и время."""
     quiz = TestFactory.create(title="Проверочный тест", duration_minutes=20)
     QuestionFactory.create_batch(3, test=quiz)
 
-    data = body(client.get(module_tests_url(quiz.module.pk)))
+    data = body(client.get(module_test_url(quiz.module.pk)))
 
-    assert data == [
-        {
-            "id": quiz.pk,
-            "title": "Проверочный тест",
-            "question_count": 3,
-            "duration_minutes": 20,
-        }
-    ]
+    assert data == {
+        "id": quiz.pk,
+        "title": "Проверочный тест",
+        "question_count": 3,
+        "duration_minutes": 20,
+    }
 
 
-def test_module_gives_out_every_active_test(client: Client) -> None:
-    """В блоке может быть несколько активных тестов — отдаём все.
-
-    Раньше отдавался первый по алфавиту, и остальные были для сайта невидимы.
-    """
+def test_module_test_skips_hidden_tests_of_the_same_module(client: Client) -> None:
+    """В блоке отдаётся активный тест, скрытые соседи на выдачу не влияют."""
     module = ModuleFactory.create()
-    first = TestFactory.create(module=module, title="Аисты")
-    second = TestFactory.create(module=module, title="Буквы")
     TestFactory.create(module=module, title="Скрытый", is_active=False)
+    visible = TestFactory.create(module=module, title="Видимый")
 
-    data = body(client.get(module_tests_url(module.pk)))
-
-    assert [item["id"] for item in data] == [first.pk, second.pk]
-
-
-def test_module_tests_are_a_bare_array(client: Client) -> None:
-    """Список тестов блока приходит массивом, без конверта пагинации."""
-    quiz = TestFactory.create()
-
-    assert isinstance(body(client.get(module_tests_url(quiz.module.pk))), list)
+    assert body(client.get(module_test_url(module.pk)))["id"] == visible.pk
 
 
-def test_module_tests_ignore_other_modules(client: Client) -> None:
-    """Тесты берутся из своего блока, а не все подряд."""
+def test_module_test_ignores_tests_of_other_modules(client: Client) -> None:
+    """Тест берётся из своего блока, а не первый попавшийся."""
     quiz = TestFactory.create()
     TestFactory.create()
 
-    assert [item["id"] for item in body(client.get(module_tests_url(quiz.module.pk)))] == [quiz.pk]
+    assert body(client.get(module_test_url(quiz.module.pk)))["id"] == quiz.pk
 
 
 def test_hidden_test_is_not_given_out(client: Client) -> None:
-    """Скрытый тест не попадает в список блока."""
+    """Скрытый тест не отдаётся: у блока нет активного — значит 404."""
     quiz = TestFactory.create(is_active=False)
 
-    assert body(client.get(module_tests_url(quiz.module.pk))) == []
+    assert client.get(module_test_url(quiz.module.pk)).status_code == 404
 
 
 def test_test_of_a_hidden_module_is_not_given_out(client: Client) -> None:
     """Скрытый блок не отдаёт свой тест даже по прямой ссылке."""
     quiz = TestFactory.create(module__is_active=False)
 
-    assert client.get(module_tests_url(quiz.module.pk)).status_code == 404
+    assert client.get(module_test_url(quiz.module.pk)).status_code == 404
 
 
-def test_module_without_tests_answers_with_an_empty_array(client: Client) -> None:
-    """Блок есть, показывать нечего — пустой массив, а не ошибка."""
+def test_module_without_tests_answers_404(client: Client) -> None:
+    """Блок без активного теста — 404 с общим конвертом ошибки."""
     module = ModuleFactory.create()
 
-    response = client.get(module_tests_url(module.pk))
-
-    assert response.status_code == 200
-    assert body(response) == []
-
-
-def test_unknown_module_answers_404(client: Client) -> None:
-    """Несуществующий блок — 404 с общим конвертом ошибки."""
-    response = client.get(module_tests_url(999999))
+    response = client.get(module_test_url(module.pk))
 
     assert response.status_code == 404
     assert body(response)["error"]["code"] == "not_found"
@@ -452,7 +429,6 @@ def test_contract_lists_opt_out_of_pagination() -> None:
     конверт с `results` — эта проверка ловит такую правку.
     """
     assert ModuleListView.pagination_class is None
-    assert ModuleTestsView.pagination_class is None
     assert TestQuestionsView.pagination_class is None
     assert PageNumberPagination.max_page_size == 100
 
@@ -492,20 +468,20 @@ def test_health_reports_unavailable_database(
 
 def test_error_has_the_common_envelope(client: Client) -> None:
     """Любая ошибка выглядит одинаково: error.code, error.message, meta.request_id."""
-    response = client.get(module_tests_url(999999))
+    response = client.get(module_test_url(999999))
     data = body(response)
 
     assert response.status_code == 404
     assert data["error"]["code"] == "not_found"
     # Не техническое «No Test matches the given query», а текст для человека.
-    assert data["error"]["message"] == "Блок не найден."
+    assert data["error"]["message"] == "Активный тест для этого блока не найден."
     assert data["error"]["details"] == {}
     assert data["meta"]["request_id"]
 
 
 def test_request_id_from_the_caller_is_kept(client: Client) -> None:
     """Свой id запроса уважаем: по нему сходятся логи фронта и бэкенда."""
-    response = client.get(module_tests_url(999999), headers={"x-request-id": "abc123"})
+    response = client.get(module_test_url(999999), headers={"x-request-id": "abc123"})
 
     assert response.headers["X-Request-ID"] == "abc123"
     assert body(response)["meta"]["request_id"] == "abc123"
@@ -595,7 +571,7 @@ def test_schema_is_generated_from_code(client: Client) -> None:
     assert response.status_code == 200
     assert "openapi" in content
     assert "/api/v1/modules/" in content
-    assert "/api/v1/modules/{module_id}/tests/" in content
+    assert "/api/v1/modules/{module_id}/test/" in content
     assert "/api/v1/answers/check/" in content
 
 

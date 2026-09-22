@@ -16,6 +16,7 @@ from django.forms.models import BaseInlineFormSet, inlineformset_factory
 from apps.catalog.models import Category, Module
 from apps.quizzes.forms import AnswerOptionInlineFormSet
 from apps.quizzes.models import MAX_ANSWER_OPTIONS, AnswerOption, Question, Test
+from apps.quizzes.services.questions import active_test_of
 
 FILE_HELP = (
     "Необязательно. Приложите готовый JSON — или оставьте поле пустым "
@@ -68,6 +69,24 @@ class TestForm(forms.ModelForm[Test]):
         # иначе только что заведённый блок не появился бы в списке до перезапуска.
         self.fields["module"].queryset = active_modules()  # type: ignore[attr-defined]
 
+    def clean(self) -> dict[str, Any]:
+        """Второй активный тест в блоке не пропускаем.
+
+        То же самое держит констрейнт базы, но там ошибка приходит без имени
+        теста, который занимает место, — а его и нужно показать.
+        """
+        cleaned: dict[str, Any] = super().clean() or {}
+        module = cleaned.get("module")
+        if cleaned.get("is_active") and module is not None:
+            busy = active_test_of(module, besides=self.instance)
+            if busy is not None:
+                self.add_error(
+                    "is_active",
+                    f"В блоке «{module.title}» уже показывается тест «{busy.title}». "
+                    "Сначала скройте его — на сайте блок показывает один тест.",
+                )
+        return cleaned
+
 
 class TestCreateForm(TestForm):
     """Новый тест: сразу с файлом вопросов или пустой, под ручной набор.
@@ -86,7 +105,7 @@ class TestCreateForm(TestForm):
 
     def clean(self) -> dict[str, Any]:
         """Пустой тест не может быть сразу показан на сайте."""
-        cleaned: dict[str, Any] = super().clean() or {}
+        cleaned: dict[str, Any] = super().clean()
         if cleaned.get("is_active") and not cleaned.get("file"):
             self.add_error(
                 "is_active",

@@ -27,6 +27,10 @@ MAX_DURATION_MINUTES = 180
 MIN_ANSWER_OPTIONS = 2
 MAX_ANSWER_OPTIONS = 10
 
+# Сообщение одно на все места, где тест пробуют показать на сайте:
+# форму студии, кнопку «показать» и админку.
+ACTIVE_TEST_EXISTS = "В этом блоке уже есть тест, который показывается на сайте."
+
 
 class TestQuerySet(ActiveQuerySet["Test"]):
     def with_question_count(self) -> Self:
@@ -95,6 +99,14 @@ class Test(TimeStamped):
                 condition=Q(duration_minutes__gte=MIN_DURATION_MINUTES)
                 & Q(duration_minutes__lte=MAX_DURATION_MINUTES),
                 name="test_duration_minutes_in_range",
+            ),
+            # Блок показывает ровно один тест, поэтому активный в нём только один.
+            # Частичный уникальный индекс: скрытых тестов в блоке сколько угодно.
+            models.UniqueConstraint(
+                fields=("module",),
+                condition=Q(is_active=True),
+                name="test_one_active_per_module",
+                violation_error_message=ACTIVE_TEST_EXISTS,
             ),
         ]
 

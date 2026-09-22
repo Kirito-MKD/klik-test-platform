@@ -1038,3 +1038,115 @@ def test_asset_survives_a_missing_file(settings: Settings) -> None:
     settings.DEBUG = True
 
     assert studio_asset("studio/no-such-file.css") == "/static/studio/no-such-file.css"
+
+
+# ─── в блоке один активный тест ─────────────────────────────────────
+
+
+def test_second_active_test_is_refused_on_create(studio: Client) -> None:
+    """Блок занят: второй тест туда не создать сразу активным."""
+    busy = TestFactory.create(title="Первый", is_active=True)
+
+    response = studio.post(
+        CREATE,
+        {
+            "module": busy.module.pk,
+            "title": "Второй",
+            "duration_minutes": 10,
+            "is_active": "on",
+            "file": questions_file(),
+        },
+    )
+
+    assert response.status_code == 200
+    assert not Test.objects.filter(title="Второй").exists()
+    assert "уже показывается тест «Первый»" in response.content.decode()
+
+
+def test_second_test_can_be_created_hidden(studio: Client) -> None:
+    """Скрытым — можно: ограничение только на тот, что показывается."""
+    busy = TestFactory.create(is_active=True)
+
+    response = studio.post(
+        CREATE,
+        {
+            "module": busy.module.pk,
+            "title": "Второй",
+            "duration_minutes": 10,
+            "file": questions_file(),
+        },
+    )
+
+    assert response.status_code == 302
+    assert not Test.objects.get(title="Второй").is_active
+
+
+def test_second_active_test_is_refused_on_edit(studio: Client) -> None:
+    """Правка карточки тоже не пропускает второй активный тест в блоке."""
+    busy = TestFactory.create(title="Первый", is_active=True)
+    quiz = TestFactory.create(module=busy.module, title="Второй", is_active=False)
+    QuestionFactory.create(test=quiz)
+
+    response = studio.post(
+        edit_url(quiz.pk),
+        {
+            "module": quiz.module.pk,
+            "title": quiz.title,
+            "duration_minutes": quiz.duration_minutes,
+            "is_active": "on",
+        },
+    )
+
+    quiz.refresh_from_db()
+    assert response.status_code == 200
+    assert not quiz.is_active
+    assert "уже показывается тест «Первый»" in response.content.decode()
+
+
+def test_active_test_stays_editable(studio: Client) -> None:
+    """Сам активный тест правится свободно: себя он не блокирует."""
+    quiz = TestFactory.create(title="Первый", is_active=True)
+    QuestionFactory.create(test=quiz)
+
+    response = studio.post(
+        edit_url(quiz.pk),
+        {
+            "module": quiz.module.pk,
+            "title": "Первый, исправленный",
+            "duration_minutes": 25,
+            "is_active": "on",
+        },
+    )
+
+    quiz.refresh_from_db()
+    assert response.status_code == 302
+    assert quiz.title == "Первый, исправленный"
+    assert quiz.is_active
+
+
+def test_toggle_refuses_when_module_is_busy(studio: Client) -> None:
+    """Кнопка «показать» отказывает с тем же объяснением, что и форма."""
+    busy = TestFactory.create(title="Первый", is_active=True)
+    quiz = TestFactory.create(module=busy.module, title="Второй", is_active=False)
+    QuestionFactory.create(test=quiz)
+
+    response = studio.post(toggle_url(quiz.pk), follow=True)
+
+    quiz.refresh_from_db()
+    assert not quiz.is_active
+    assert "уже показывается тест «Первый»" in response.content.decode()
+
+
+def test_toggle_works_after_the_busy_test_is_hidden(studio: Client) -> None:
+    """Освободили блок — и тест показывается."""
+    busy = TestFactory.create(is_active=True)
+    quiz = TestFactory.create(module=busy.module, is_active=False)
+    QuestionFactory.create(test=quiz)
+
+    studio.post(toggle_url(busy.pk))
+    studio.post(toggle_url(quiz.pk))
+
+    quiz.refresh_from_db()
+    busy.refresh_from_db()
+    assert quiz.is_active
+    assert not busy.is_active
