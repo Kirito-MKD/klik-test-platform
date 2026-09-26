@@ -38,6 +38,12 @@ def parse_questions(raw: bytes | str) -> QuestionsFile:
     """Разбирает и проверяет файл, не трогая базу."""
     try:
         data = json.loads(raw)
+    except UnicodeDecodeError as error:
+        # Байты не в UTF-8 json не читает вовсе: так бывает с файлом, который
+        # старый Блокнот сохранил в cp1251. BOM при этом не мешает — его json понимает.
+        raise QuestionsFileError(
+            ["Файл должен быть в кодировке UTF-8: пересохраните его с этой кодировкой."]
+        ) from error
     except json.JSONDecodeError as error:
         raise QuestionsFileError([f"Файл не разбирается как JSON: {error}"]) from error
 

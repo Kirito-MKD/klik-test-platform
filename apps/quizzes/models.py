@@ -33,6 +33,14 @@ ACTIVE_TEST_EXISTS = "В этом блоке уже есть тест, кото�
 
 
 class TestQuerySet(ActiveQuerySet["Test"]):
+    def visible(self) -> Self:
+        """То, что видно на сайте: показывается сам тест, его блок и категория.
+
+        Скрытый блок или категория прячут тест целиком — и карточку, и вопросы,
+        и проверку ответа, в том числе по прямой ссылке.
+        """
+        return self.active().filter(module__is_active=True, module__category__is_active=True)
+
     def with_question_count(self) -> Self:
         """Добавляет `questions_count` — счётчика в таблице нет, считаем запросом."""
         return self.annotate(questions_count=models.Count("questions"))
@@ -44,6 +52,9 @@ class TestManager(ActiveManager["Test"]):
 
     def active(self) -> TestQuerySet:
         return self.get_queryset().active()
+
+    def visible(self) -> TestQuerySet:
+        return self.get_queryset().visible()
 
     def with_question_count(self) -> TestQuerySet:
         return self.get_queryset().with_question_count()

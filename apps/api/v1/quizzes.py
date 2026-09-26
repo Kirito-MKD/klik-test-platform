@@ -65,8 +65,8 @@ class AnswerCheckResultSerializer(serializers.Serializer[dict[str, bool]]):
     summary="Активный тест блока",
     description=(
         "Тест, который показывается в блоке. Активный тест в блоке один, "
-        "это держит констрейнт базы. 404 — если блок скрыт, его нет "
-        "или показывать в нём пока нечего."
+        "это держит констрейнт базы. 404 — если блок или его категория скрыты, "
+        "блока нет или показывать в нём пока нечего."
     ),
 )
 class ModuleTestView(generics.RetrieveAPIView[Test]):
@@ -78,13 +78,9 @@ class ModuleTestView(generics.RetrieveAPIView[Test]):
 
     def get_object(self) -> Test:
         quiz = (
-            Test.objects.active()
+            Test.objects.visible()
             .with_question_count()
-            .filter(
-                module_id=self.kwargs["module_id"],
-                module__is_active=True,
-                module__category__is_active=True,
-            )
+            .filter(module_id=self.kwargs["module_id"])
             .first()
         )
         if quiz is None:
@@ -96,11 +92,13 @@ class ModuleTestView(generics.RetrieveAPIView[Test]):
     summary="Вопросы теста с вариантами ответа",
     description=(
         "Плоский список без пагинации, порядок — по `position`. Признака верности "
-        "у вариантов нет: ответ проверяется запросом `POST /answers/check/`."
+        "у вариантов нет: ответ проверяется запросом `POST /answers/check/`. "
+        "404 — если теста нет или он не виден на сайте: скрыт сам тест, его блок "
+        "или категория."
     ),
 )
 class TestQuestionsView(generics.ListAPIView[Question]):
-    """Вопросы активного теста по `test_id`."""
+    """Вопросы видимого на сайте теста по `test_id`."""
 
     __test__ = False
 
@@ -111,7 +109,7 @@ class TestQuestionsView(generics.ListAPIView[Question]):
     def get_queryset(self) -> QuerySet[Question]:
         # Тест проверяем отдельно: иначе на скрытый тест и на тест без вопросов
         # фронт получал бы один и тот же пустой массив.
-        if not Test.objects.active().filter(pk=self.kwargs["test_id"]).exists():
+        if not Test.objects.visible().filter(pk=self.kwargs["test_id"]).exists():
             raise NotFound("Активный тест не найден.")
         return (
             Question.objects.filter(test_id=self.kwargs["test_id"])
@@ -142,13 +140,14 @@ class AnswerCheckView(APIView):
         ids = payload.validated_data
 
         # Одним запросом проверяем и связку «тест → вопрос → вариант», и то, что
-        # тест показывается на сайте: по отдельности это три похода в базу.
+        # тест виден на сайте: по отдельности это три похода в базу. Видимость —
+        # подзапросом из того же `visible()`, что у карточки и списка вопросов.
         option = (
             AnswerOption.objects.filter(
                 pk=ids["option_id"],
                 question_id=ids["question_id"],
                 question__test_id=ids["test_id"],
-                question__test__is_active=True,
+                question__test__in=Test.objects.visible(),
             )
             .values_list("is_correct", flat=True)
             .first()

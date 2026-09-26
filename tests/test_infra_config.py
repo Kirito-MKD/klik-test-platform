@@ -1,10 +1,18 @@
 """Инфраструктурные файлы не должны разъезжаться с настройками проекта."""
 
+import fnmatch
+import os
 import re
+import shutil
+import subprocess
 from pathlib import Path
 from typing import Any
 
+import pytest
 import yaml
+from django.db.models import FileField
+
+from apps.quizzes.models import Test
 
 ROOT = Path(__file__).resolve().parents[1]
 
@@ -130,6 +138,80 @@ def test_dockerfile_collects_static_at_build() -> None:
     assert "collectstatic --noinput" in text
 
 
+def test_nginx_does_not_serve_question_files() -> None:
+    """Исходники вопросов лежат в медиа, и в них верные ответы — nginx их не отдаёт.
+
+    Скачать файл можно только из студии, по правам. Каталог берём из модели:
+    переедет upload_to — тест покажет, что закрытый путь устарел.
+    """
+    field = Test._meta.get_field("questions_file")
+    assert isinstance(field, FileField)
+    directory = str(field.upload_to).split("/", 1)[0]
+
+    closed = re.search(rf"location /media/{directory}/ \{{\s*return 404;\s*\}}", _nginx_template())
+
+    assert closed is not None, f"nginx отдаёт /media/{directory}/ всем желающим"
+
+
+def test_nginx_keeps_the_request_id_from_the_caller() -> None:
+    """Свой X-Request-ID фронта доезжает до приложения; nginx ставит свой, только если его нет.
+
+    `proxy_set_header X-Request-ID $request_id` затирал id фронта, и логи
+    фронта и бэкенда переставали сходиться.
+    """
+    template = _nginx_template()
+    mapping = re.search(r"map \$http_x_request_id \$(\w+) \{(.*?)\}", template, re.DOTALL)
+
+    assert mapping is not None
+    variable, rules = mapping.groups()
+    assert re.search(r"default\s+\$http_x_request_id;", rules)
+    assert re.search(r'""\s+\$request_id;', rules)
+    assert f"proxy_set_header X-Request-ID ${variable};" in template
+
+
+def dockerignored(path: str) -> bool:
+    """Отсечёт ли .dockerignore файл из контекста сборки.
+
+    Правила Docker в том объёме, что нужен этому файлу: путь исключён, если
+    шаблону отвечает он сам или любой его каталог; `!` возвращает путь обратно;
+    побеждает последнее подходящее правило.
+    """
+    lines = (ROOT / ".dockerignore").read_text(encoding="utf-8").splitlines()
+    parts = path.split("/")
+    candidates = ["/".join(parts[: depth + 1]) for depth in range(len(parts))]
+    ignored = False
+    for line in lines:
+        rule = line.strip()
+        if not rule or rule.startswith("#"):
+            continue
+        keep = rule.startswith("!")
+        pattern = rule.removeprefix("!").strip("/")
+        if any(fnmatch.fnmatchcase(candidate, pattern) for candidate in candidates):
+            ignored = not keep
+    return ignored
+
+
+@pytest.mark.parametrize(
+    "path",
+    [
+        ".env",
+        ".env.prod",
+        "backups/klik-2026-09-16_0300.dump",
+        "deploy/certs/privkey.pem",
+    ],
+)
+def test_dockerignore_keeps_secrets_out_of_the_image(path: str) -> None:
+    """`COPY . .` в прод-образ не должен унести пароли, дампы базы и ключ сертификата."""
+    assert dockerignored(path), f"{path} попадёт в образ"
+
+
+def test_dockerignore_check_tells_ignored_from_kept() -> None:
+    """Контроль самой проверки: исключение `!docs/examples/` и код остаются в образе."""
+    assert dockerignored("docs/api.md")
+    assert not dockerignored("docs/examples/questions.json")
+    assert not dockerignored("apps/quizzes/models.py")
+
+
 def test_backup_script_rotates_and_refuses_empty_dump() -> None:
     """Бэкап без ротации забьёт диск, а пустой дамп хуже отсутствующего."""
     script = (ROOT / "deploy" / "backup.sh").read_text(encoding="utf-8")
@@ -137,7 +219,71 @@ def test_backup_script_rotates_and_refuses_empty_dump() -> None:
     assert "pg_dump" in script
     assert "-mtime" in script, "нет ротации старых дампов"
     assert "KLIK_BACKUP_KEEP_DAYS" in script
-    assert 'if [ ! -s "$target" ]' in script, "пустой дамп должен быть ошибкой"
+    assert 'if [ ! -s "$partial" ]' in script, "пустой дамп должен быть ошибкой"
+
+
+def fake_docker(exit_code: int) -> str:
+    """Подмена docker: печатает кусок дампа и завершается с нужным кодом."""
+    return f"#!/bin/sh\nprintf 'PGDMP-dump'\nexit {exit_code}\n"
+
+
+def run_backup(tmp_path: Path, docker_script: str) -> tuple[subprocess.CompletedProcess[str], Path]:
+    """Запускает backup.sh, где вместо docker — заданный скрипт."""
+    bin_dir = tmp_path / "bin"
+    bin_dir.mkdir()
+    docker = bin_dir / "docker"
+    docker.write_text(docker_script, encoding="utf-8", newline="\n")
+    docker.chmod(0o755)
+    (tmp_path / "backup.env").write_text(
+        "POSTGRES_USER=klik\nPOSTGRES_DB=klik\n", encoding="utf-8", newline="\n"
+    )
+
+    sh = shutil.which("sh")
+    assert sh is not None
+    # Каталог самого sh — сразу за подменой: под Windows иначе вместо POSIX find
+    # находится системный find.exe. Пути относительные: так их одинаково понимают
+    # sh на Linux и sh из Git для Windows.
+    path = os.pathsep.join([str(bin_dir), str(Path(sh).parent), os.environ.get("PATH", "")])
+    result = subprocess.run(  # noqa: S603 — свой скрипт из репозитория, аргументы наши
+        [sh, str(ROOT / "deploy" / "backup.sh")],
+        cwd=tmp_path,
+        env={
+            **os.environ,
+            "PATH": path,
+            "KLIK_ENV_FILE": "backup.env",
+            "KLIK_BACKUP_DIR": "backups",
+        },
+        capture_output=True,
+        text=True,
+        encoding="utf-8",
+        timeout=60,
+        check=False,
+    )
+    return result, tmp_path / "backups"
+
+
+@pytest.mark.skipif(shutil.which("sh") is None, reason="нужен POSIX sh")
+def test_backup_leaves_no_truncated_dump_when_pg_dump_fails(tmp_path: Path) -> None:
+    """Оборванный дамп не должен лежать среди бэкапов под видом целого.
+
+    Иначе ротация честно удалит старые хорошие дампы, а при восстановлении
+    окажется, что свежий — обрубок.
+    """
+    result, backups = run_backup(tmp_path, fake_docker(exit_code=1))
+
+    assert result.returncode != 0
+    assert list(backups.iterdir()) == []
+
+
+@pytest.mark.skipif(shutil.which("sh") is None, reason="нужен POSIX sh")
+def test_backup_keeps_a_complete_dump(tmp_path: Path) -> None:
+    """Контроль к тесту выше: удачный дамп ложится на место под своим именем."""
+    result, backups = run_backup(tmp_path, fake_docker(exit_code=0))
+
+    dumps = list(backups.iterdir())
+    assert result.returncode == 0, result.stderr
+    assert [dump.name.startswith("klik-") and dump.suffix == ".dump" for dump in dumps] == [True]
+    assert dumps[0].read_text(encoding="utf-8") == "PGDMP-dump"
 
 
 def test_prod_env_example_lists_required_variables() -> None:

@@ -203,6 +203,13 @@ def test_test_of_a_hidden_module_is_not_given_out(client: Client) -> None:
     assert client.get(module_test_url(quiz.module.pk)).status_code == 404
 
 
+def test_test_of_a_hidden_category_is_not_given_out(client: Client) -> None:
+    """Скрытая категория прячет тест своего блока так же, как сам блок."""
+    quiz = TestFactory.create(module__category__is_active=False)
+
+    assert client.get(module_test_url(quiz.module.pk)).status_code == 404
+
+
 def test_module_without_tests_answers_404(client: Client) -> None:
     """Блок без активного теста — 404 с общим конвертом ошибки."""
     module = ModuleFactory.create()
@@ -265,6 +272,22 @@ def test_questions_are_ordered_by_position(client: Client) -> None:
 def test_questions_of_a_hidden_test_are_not_given_out(client: Client) -> None:
     """Скрытый тест не отдаёт вопросы: иначе его можно пройти мимо каталога."""
     quiz = TestFactory.create(is_active=False)
+    QuestionFactory.create(test=quiz)
+
+    assert client.get(questions_url(quiz.pk)).status_code == 404
+
+
+def test_questions_of_a_hidden_module_are_not_given_out(client: Client) -> None:
+    """Скрытый блок закрывает и вопросы своего теста, даже по прямой ссылке."""
+    quiz = TestFactory.create(module__is_active=False)
+    QuestionFactory.create(test=quiz)
+
+    assert client.get(questions_url(quiz.pk)).status_code == 404
+
+
+def test_questions_of_a_hidden_category_are_not_given_out(client: Client) -> None:
+    """Скрытая категория закрывает вопросы тестов во всех своих блоках."""
+    quiz = TestFactory.create(module__category__is_active=False)
     QuestionFactory.create(test=quiz)
 
     assert client.get(questions_url(quiz.pk)).status_code == 404
@@ -361,6 +384,28 @@ def test_check_rejects_a_question_from_another_test(client: Client) -> None:
 def test_check_is_closed_for_a_hidden_test(client: Client) -> None:
     """Скрытый тест не проверяет ответы — его на сайте нет."""
     question = QuestionFactory.create(test__is_active=False)
+    option = AnswerOptionFactory.create(question=question, is_correct=True)
+
+    response = check(
+        client,
+        test_id=question.test.pk,
+        question_id=question.pk,
+        option_id=option.pk,
+    )
+
+    assert response.status_code == 404
+
+
+@pytest.mark.parametrize(
+    "hidden",
+    [
+        pytest.param({"test__module__is_active": False}, id="hidden_module"),
+        pytest.param({"test__module__category__is_active": False}, id="hidden_category"),
+    ],
+)
+def test_check_is_closed_when_the_test_is_off_the_site(client: Client, hidden: Any) -> None:
+    """Тест скрытого блока или категории тоже не проверяет ответы: на сайте его нет."""
+    question = QuestionFactory.create(**hidden)
     option = AnswerOptionFactory.create(question=question, is_correct=True)
 
     response = check(
@@ -505,6 +550,24 @@ def test_anonymous_requests_are_throttled(client: Client, monkeypatch: pytest.Mo
     assert response.status_code == 429
     assert data["error"]["code"] == "throttled"
     assert data["meta"]["request_id"]
+
+
+def test_spoofed_forwarded_for_does_not_reset_the_limit(
+    client: Client, monkeypatch: pytest.MonkeyPatch, settings: Settings
+) -> None:
+    """За nginx клиента опознаём по адресу, который дописал nginx, а не по всему заголовку.
+
+    Левую часть X-Forwarded-For присылает сам клиент. Считай мы по строке
+    целиком, каждый запрос с новым выдуманным адресом начинал бы лимит заново.
+    """
+    settings.REST_FRAMEWORK = {**settings.REST_FRAMEWORK, "NUM_PROXIES": 1}
+    tighten_throttle(monkeypatch)
+
+    first = client.get(MODULES, headers={"x-forwarded-for": "10.0.0.1, 203.0.113.7"})
+    second = client.get(MODULES, headers={"x-forwarded-for": "10.0.0.2, 203.0.113.7"})
+
+    assert first.status_code == 200
+    assert second.status_code == 429
 
 
 def test_cors_answers_only_the_configured_origin(client: Client, settings: Settings) -> None:

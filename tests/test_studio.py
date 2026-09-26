@@ -7,7 +7,9 @@
 
 import json
 import re
-from typing import Any
+from collections.abc import Iterator
+from pathlib import Path
+from typing import Any, cast
 
 import pytest
 from django.contrib.auth.models import Group, User
@@ -15,6 +17,7 @@ from django.core.files.uploadedfile import SimpleUploadedFile
 from django.core.management import call_command
 from django.db import connection
 from django.db.models import QuerySet
+from django.http import FileResponse
 from django.test import Client
 from django.test.utils import CaptureQueriesContext
 from pytest_django.fixtures import Settings
@@ -28,7 +31,7 @@ from apps.quizzes.models import (
     Question,
     Test,
 )
-from apps.quizzes.services.import_questions import parse_questions
+from apps.quizzes.services.import_questions import import_questions_from_file, parse_questions
 from apps.quizzes.services.questions import renumber
 from apps.studio.prompt import questions_prompt
 from apps.studio.sample import SAMPLE, sample_json
@@ -62,6 +65,10 @@ def edit_url(test_id: int) -> str:
 
 def toggle_url(test_id: int) -> str:
     return f"/studio/tests/{test_id}/toggle/"
+
+
+def source_file_url(test_id: int) -> str:
+    return f"/studio/tests/{test_id}/file/"
 
 
 def question_create_url(test_id: int) -> str:
@@ -216,6 +223,20 @@ def test_index_filters_by_category(studio: Client) -> None:
     assert "Углы" not in page
 
 
+@pytest.mark.parametrize("value", ["²", "abc", "-1"])
+def test_index_ignores_a_category_that_is_not_a_number(studio: Client, value: str) -> None:
+    """Кривое значение фильтра из адресной строки — весь список, а не 500.
+
+    «²» проходит `str.isdigit()`, но не `int()`: проверять надо десятичные цифры.
+    """
+    TestFactory.create(title="Дроби")
+
+    response = studio.get(INDEX, {"category": value})
+
+    assert response.status_code == 200
+    assert "Дроби" in response.content.decode()
+
+
 def test_index_explains_the_first_step_when_empty(studio: Client) -> None:
     """Пустое состояние объясняет следующий шаг, а не просто «нет данных»."""
     page = studio.get(INDEX).content.decode()
@@ -363,6 +384,64 @@ def test_detail_of_an_unknown_test_is_404(studio: Client) -> None:
     assert studio.get(detail_url(999999)).status_code == 404
 
 
+# ─── исходный файл вопросов ─────────────────────────────────────────
+
+
+@pytest.fixture
+def quiz_with_file(settings: Settings, tmp_path: Path) -> Test:
+    """Тест, в который загрузили файл: исходник лежит в медиа как архив."""
+    settings.MEDIA_ROOT = tmp_path
+    quiz = TestFactory.create(is_active=False)
+    import_questions_from_file(quiz, questions_file(name="matematika.json"))
+    return quiz
+
+
+def test_source_file_downloads_for_the_editor(studio: Client, quiz_with_file: Test) -> None:
+    """Исходник отдаётся тому, кто видит тесты, — вложением и под своим именем."""
+    response = studio.get(source_file_url(quiz_with_file.pk))
+
+    assert response.status_code == 200
+    assert response.headers["Content-Disposition"].startswith("attachment")
+    assert "matematika" in response.headers["Content-Disposition"]
+    assert isinstance(response, FileResponse)
+    assert json.loads(b"".join(cast("Iterator[bytes]", response.streaming_content))) == SAMPLE
+
+
+def test_source_file_needs_rights(client: Client, quiz_with_file: Test) -> None:
+    """В файле верные ответы: без входа и без прав его не получить."""
+    anonymous = client.get(source_file_url(quiz_with_file.pk))
+    client.force_login(User.objects.create_user(username="guest", password="guest-pass"))
+    stranger = client.get(source_file_url(quiz_with_file.pk))
+
+    assert anonymous.status_code == 302
+    assert anonymous.headers["Location"].startswith(LOGIN)
+    assert stranger.status_code == 403
+
+
+def test_source_file_of_a_test_without_one_is_404(studio: Client) -> None:
+    """Тест, набранный руками, файла не имеет — скачивать нечего."""
+    quiz = TestFactory.create()
+
+    assert studio.get(source_file_url(quiz.pk)).status_code == 404
+
+
+def test_source_file_lost_on_disk_is_404(studio: Client, quiz_with_file: Test) -> None:
+    """Файл пропал из хранилища (переезд, чистка) — 404, а не 500."""
+    Path(quiz_with_file.questions_file.path).unlink()
+
+    assert studio.get(source_file_url(quiz_with_file.pk)).status_code == 404
+
+
+def test_detail_links_the_source_file_through_the_studio(
+    studio: Client, quiz_with_file: Test
+) -> None:
+    """Ссылка на исходник ведёт в студию: прямой адрес в медиа nginx не отдаёт."""
+    page = studio.get(detail_url(quiz_with_file.pk)).content.decode()
+
+    assert f'href="{source_file_url(quiz_with_file.pk)}"' in page
+    assert "/media/" not in page
+
+
 def test_upload_replaces_previous_questions(studio: Client) -> None:
     """Режим «заменить» стирает прежние вопросы теста."""
     quiz = TestFactory.create()
@@ -399,6 +478,25 @@ def test_upload_error_keeps_old_questions(studio: Client) -> None:
 
     assert response.status_code == 200
     assert Question.objects.filter(test=quiz).count() == 2
+
+
+def test_upload_of_a_file_not_in_utf8_names_the_encoding(studio: Client) -> None:
+    """Файл в cp1251 — ошибка у поля с файлом, а не падение страницы."""
+    quiz = TestFactory.create()
+    QuestionFactory.create(test=quiz)
+    raw = json.dumps(SAMPLE, ensure_ascii=False).encode("cp1251")
+
+    response = studio.post(
+        upload_url(quiz.pk),
+        {
+            "file": SimpleUploadedFile("questions.json", raw, content_type="application/json"),
+            "mode": "replace",
+        },
+    )
+
+    assert response.status_code == 200
+    assert "кодировке UTF-8" in response.content.decode()
+    assert Question.objects.filter(test=quiz).count() == 1
 
 
 def test_upload_without_a_file_names_the_field(studio: Client) -> None:

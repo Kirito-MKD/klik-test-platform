@@ -23,16 +23,20 @@ esac
 mkdir -p "$BACKUP_DIR"
 stamp=$(date +%Y-%m-%d_%H%M)
 target="$BACKUP_DIR/klik-$stamp.dump"
+# Дамп пишется во временный файл и получает имя бэкапа, только когда готов.
+# Упавший на середине pg_dump иначе оставил бы обрубок под видом целого дампа.
+partial="$target.partial"
+trap 'rm -f "$partial"' EXIT
 
 docker compose -f "$COMPOSE_FILE" --env-file "$ENV_FILE" exec -T db \
-    pg_dump -U "$POSTGRES_USER" -d "$POSTGRES_DB" --format=custom > "$target"
+    pg_dump -U "$POSTGRES_USER" -d "$POSTGRES_DB" --format=custom > "$partial"
 
 # Пустой дамп — это не бэкап: лучше упасть сейчас, чем узнать при восстановлении.
-if [ ! -s "$target" ]; then
-    echo "$(date '+%F %T') ОШИБКА: дамп пустой, удаляю $target" >&2
-    rm -f "$target"
+if [ ! -s "$partial" ]; then
+    echo "$(date '+%F %T') ОШИБКА: дамп пустой, бэкап не сохранён" >&2
     exit 1
 fi
+mv "$partial" "$target"
 
 find "$BACKUP_DIR" -name 'klik-*.dump' -type f -mtime "+$KEEP_DAYS" -delete
 

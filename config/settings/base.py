@@ -141,6 +141,9 @@ STORAGES = {
 }
 
 # Файл вопросов заливается в админке: 5 МБ с запасом хватает на любой JSON.
+# Файлы до этого размера Django держит в памяти, крупнее — пишет во временный
+# файл. Предела на размер самого файла у Django нет: его ставит nginx
+# (client_max_body_size в deploy/nginx).
 DATA_UPLOAD_MAX_MEMORY_SIZE = 5 * 1024 * 1024
 FILE_UPLOAD_MAX_MEMORY_SIZE = 5 * 1024 * 1024
 

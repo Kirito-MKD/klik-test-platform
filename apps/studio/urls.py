@@ -1,7 +1,8 @@
 """Маршруты студии.
 
 Вход и выход — стандартные представления Django со своими шаблонами: своя форма
-логина здесь не нужна, а поведение (защита от перебора, `next`) уже проверено.
+логина здесь не нужна, а поведение (проверка `next` на чужой адрес, новая сессия
+после входа) уже проверено. Защиты от перебора паролей у LoginView нет.
 """
 
 from django.contrib.auth.views import LoginView, LogoutView
@@ -18,6 +19,7 @@ urlpatterns: list[URLPattern | URLResolver] = [
     path("logout/", LogoutView.as_view(next_page="studio:login"), name="logout"),
     path("tests/new/", views.test_create, name="test-create"),
     path("tests/<int:test_id>/", views.test_detail, name="test-detail"),
+    path("tests/<int:test_id>/file/", views.test_source_file, name="test-file"),
     path("tests/<int:test_id>/edit/", views.test_edit, name="test-edit"),
     path("tests/<int:test_id>/upload/", views.test_upload, name="test-upload"),
     path("tests/<int:test_id>/toggle/", views.test_toggle_active, name="test-toggle"),

@@ -8,12 +8,14 @@
 проверка доступа видна прямо над телом, а не собирается из миксинов.
 """
 
+from pathlib import PurePosixPath
+
 from django.contrib import messages
 from django.contrib.auth.decorators import login_required, permission_required
 from django.db import transaction
 from django.db.models import Q, QuerySet
 from django.forms.models import BaseInlineFormSet, ModelForm
-from django.http import HttpRequest, HttpResponse, JsonResponse
+from django.http import FileResponse, Http404, HttpRequest, HttpResponse, JsonResponse
 from django.shortcuts import get_object_or_404, redirect, render
 from django.views.decorators.http import require_POST
 
@@ -27,9 +29,9 @@ from apps.quizzes.services.import_questions import (
 )
 from apps.quizzes.services.questions import (
     active_test_of,
+    after_questions_removed,
     has_questions,
     next_position,
-    renumber,
 )
 from apps.studio.forms import (
     CategoryForm,
@@ -57,7 +59,8 @@ def tests_for_list(search: str, category_id: str) -> QuerySet[Test]:
     )
     if search:
         tests = tests.filter(Q(title__icontains=search) | Q(module__title__icontains=search))
-    if category_id.isdigit():
+    # isdecimal, а не isdigit: «²» — digit, но int() его не примет.
+    if category_id.isdecimal():
         tests = tests.filter(module__category_id=int(category_id))
     return tests
 
@@ -151,6 +154,25 @@ def test_detail(request: HttpRequest, test_id: int) -> HttpResponse:
     """Тест целиком: поля, вопросы с вариантами и повторная загрузка файла."""
     quiz = get_object_or_404(Test.objects.select_related("module", "module__category"), pk=test_id)
     return render_detail(request, quiz)
+
+
+@login_required
+@permission_required("quizzes.view_test", raise_exception=True)
+def test_source_file(request: HttpRequest, test_id: int) -> FileResponse:
+    """Исходный файл вопросов — тот, что загружали, для архива и разбора.
+
+    В файле верные ответы, поэтому из медиа наружу он не отдаётся (nginx
+    закрывает этот каталог) и скачивается только здесь, по праву видеть тесты.
+    """
+    quiz = get_object_or_404(Test, pk=test_id)
+    stored = quiz.questions_file
+    if not stored.name:
+        raise Http404("У теста нет загруженного файла.")
+    try:
+        stored.open("rb")
+    except FileNotFoundError as error:
+        raise Http404("Файла нет в хранилище.") from error
+    return FileResponse(stored, as_attachment=True, filename=PurePosixPath(stored.name).name)
 
 
 @login_required
@@ -310,11 +332,8 @@ def question_delete(request: HttpRequest, test_id: int, question_id: int) -> Htt
 
     with transaction.atomic():
         question.delete()
-        renumber(quiz)
         # Последний вопрос убрали — показывать на сайте больше нечего.
-        if quiz.is_active and not has_questions(quiz):
-            quiz.is_active = False
-            quiz.save(update_fields=["is_active", "updated_at"])
+        if after_questions_removed(quiz):
             messages.warning(request, "Вопросов не осталось, тест скрыт с сайта.")
 
     messages.success(request, f"Вопрос {position} удалён.")

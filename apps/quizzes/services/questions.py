@@ -42,6 +42,23 @@ def active_test_of(module: Module, besides: Test | None = None) -> Test | None:
 
 
 @transaction.atomic
+def after_questions_removed(test: Test) -> bool:
+    """Приводит тест в порядок после того, как из него ушли вопросы.
+
+    Нумерация снова идёт подряд, а тест, в котором не осталось ни одного
+    вопроса, уходит с сайта: проходить в нём нечего. Правило одно для студии
+    и админки. Возвращает True, если тест пришлось скрыть, — об этом стоит
+    сказать человеку.
+    """
+    renumber(test)
+    if test.is_active and not has_questions(test):
+        test.is_active = False
+        test.save(update_fields=["is_active", "updated_at"])
+        return True
+    return False
+
+
+@transaction.atomic
 def renumber(test: Test) -> None:
     """Сдвигает номера так, чтобы шли подряд с первого.
 

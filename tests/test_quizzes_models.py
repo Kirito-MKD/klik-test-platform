@@ -201,6 +201,17 @@ def test_active_returns_only_visible_tests() -> None:
     assert list(Test.objects.active().with_question_count()) == [visible]
 
 
+def test_visible_leaves_out_tests_of_hidden_modules_and_categories() -> None:
+    """На сайте тест виден, только если показываются он сам, его блок и категория."""
+    shown = TestFactory.create()
+    TestFactory.create(is_active=False)
+    TestFactory.create(module__is_active=False)
+    TestFactory.create(module__category__is_active=False)
+
+    assert list(Test.objects.visible()) == [shown]
+    assert list(Test.objects.visible().with_question_count()) == [shown]
+
+
 def test_str_shows_title_number_and_text() -> None:
     """В админке и логах объекты должны читаться, а не показывать `object (1)`."""
     quiz = TestFactory.create(title="Сложение дробей")

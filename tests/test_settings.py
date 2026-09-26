@@ -120,6 +120,23 @@ def test_anonymous_throttle_rate_comes_from_environment() -> None:
     assert base.REST_FRAMEWORK["DEFAULT_THROTTLE_RATES"]["anon"] == "10/min"
 
 
+def test_prod_counts_proxies_in_front_of_the_app() -> None:
+    """За nginx адрес клиента для троттлинга — последнее звено X-Forwarded-For.
+
+    Без NUM_PROXIES DRF берёт заголовок целиком, а левую его часть присылает
+    сам клиент: новый выдуманный адрес — новый счётчик, и лимита нет.
+    """
+    # load() перезагружает тот же модуль, поэтому значение снимаем сразу.
+    one_hop = load("config.settings.prod", {**MINIMAL_ENV, "DJANGO_DEBUG": "false"})
+    assert one_hop.REST_FRAMEWORK["NUM_PROXIES"] == 1
+
+    two_hops = load(
+        "config.settings.prod",
+        {**MINIMAL_ENV, "DJANGO_DEBUG": "false", "DJANGO_NUM_PROXIES": "2"},
+    )
+    assert two_hops.REST_FRAMEWORK["NUM_PROXIES"] == 2
+
+
 def test_api_authenticates_nobody() -> None:
     """Сессионной аутентификации у API быть не должно.
 

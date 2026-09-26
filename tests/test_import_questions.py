@@ -76,6 +76,25 @@ def test_broken_json_is_reported() -> None:
     assert "не разбирается как JSON" in str(error.value)
 
 
+def test_file_not_in_utf8_is_reported() -> None:
+    """Файл в cp1251 (так сохраняет старый Блокнот) — претензия про кодировку, а не 500."""
+    raw = json.dumps(one_question(), ensure_ascii=False).encode("cp1251")
+
+    with pytest.raises(QuestionsFileError) as error:
+        parse_questions(raw)
+
+    assert error.value.problems == [
+        "Файл должен быть в кодировке UTF-8: пересохраните его с этой кодировкой."
+    ]
+
+
+def test_utf8_file_with_bom_is_accepted() -> None:
+    """Метка BOM в начале файла — тоже UTF-8, отказывать из-за неё нельзя."""
+    raw = json.dumps(one_question(), ensure_ascii=False).encode("utf-8-sig")
+
+    assert len(parse_questions(raw).questions) == 1
+
+
 def test_unknown_field_is_rejected() -> None:
     """extra=forbid: лишний ключ не проглатывается молча."""
     with pytest.raises(QuestionsFileError) as error:

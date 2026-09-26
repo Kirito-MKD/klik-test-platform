@@ -6,17 +6,21 @@
 пришедшие в том же запросе.
 """
 
+from collections.abc import Iterable
+from pathlib import PurePosixPath
 from typing import cast
 
 from django import forms
 from django.contrib import admin, messages
 from django.core.exceptions import PermissionDenied, ValidationError
+from django.db import transaction
 from django.db.models import QuerySet
 from django.forms.models import BaseInlineFormSet
 from django.http import HttpRequest, HttpResponse
 from django.shortcuts import get_object_or_404, redirect
 from django.template.response import TemplateResponse
-from django.urls import URLPattern, path
+from django.urls import URLPattern, path, reverse
+from django.utils.html import format_html
 from django.utils.text import Truncator
 
 from apps.quizzes.forms import (
@@ -36,6 +40,7 @@ from apps.quizzes.services.import_questions import (
     QuestionsFileError,
     import_questions_from_file,
 )
+from apps.quizzes.services.questions import after_questions_removed
 
 
 class QuestionInlineFormSet(BaseInlineFormSet[Question, Test, forms.ModelForm[Question]]):
@@ -87,13 +92,13 @@ class TestAdmin(admin.ModelAdmin[Test]):
     search_fields = ("title",)
     autocomplete_fields = ("module",)
     inlines = (QuestionInline,)
-    readonly_fields = ("created_at", "updated_at")
+    readonly_fields = ("source_file", "created_at", "updated_at")
     fieldsets = (
         (None, {"fields": ("module", "title", "duration_minutes", "is_active")}),
         (
             "Файл с вопросами",
             {
-                "fields": ("questions_file",),
+                "fields": ("source_file",),
                 "description": "Здесь лежит последний загруженный файл — как архив. "
                 "Чтобы залить вопросы, нажмите «Загрузить вопросы из JSON» вверху страницы.",
             },
@@ -114,6 +119,23 @@ class TestAdmin(admin.ModelAdmin[Test]):
     @admin.display(description="вопросов", ordering="questions_count")
     def questions_number(self, quiz: Test) -> int:
         return quiz.questions_count
+
+    @admin.display(description="файл с вопросами")
+    def source_file(self, quiz: Test) -> str:
+        """Ссылка на скачивание из студии, а не прямой адрес в медиа.
+
+        В файле верные ответы: nginx каталог с ними наружу не отдаёт, файл
+        скачивается только через студию, по праву видеть тесты. Заменить его
+        можно лишь загрузкой — иначе архив разошёлся бы с вопросами теста.
+        """
+        name = quiz.questions_file.name
+        if not name:
+            return self.get_empty_value_display()
+        return format_html(
+            '<a href="{}">{}</a>',
+            reverse("studio:test-file", args=[quiz.pk]),
+            PurePosixPath(name).name,
+        )
 
     def get_urls(self) -> list[URLPattern]:
         own = [
@@ -172,3 +194,35 @@ class QuestionAdmin(admin.ModelAdmin[Question]):
     @admin.display(description="вопрос")
     def short_text(self, question: Question) -> str:
         return Truncator(question.text).chars(80)
+
+    # Удаление и перенос вопроса подчиняются тому же правилу, что в студии:
+    # нумерация подтягивается, а опустевший тест уходит с сайта.
+
+    def save_model(
+        self, request: HttpRequest, obj: Question, form: forms.ModelForm[Question], change: bool
+    ) -> None:
+        super().save_model(request, obj, form, change)
+        if change and "test" in form.changed_data:
+            self.tidy(request, [form.initial["test"]])
+
+    def delete_model(self, request: HttpRequest, obj: Question) -> None:
+        quiz = obj.test
+        super().delete_model(request, obj)
+        self.tidy(request, [quiz.pk])
+
+    def delete_queryset(self, request: HttpRequest, queryset: QuerySet[Question]) -> None:
+        # Массовое удаление из списка идёт без общей транзакции: без неё тест
+        # мог бы остаться на сайте пустым, если упадёт перенумерация.
+        with transaction.atomic():
+            test_ids = set(queryset.values_list("test_id", flat=True))
+            super().delete_queryset(request, queryset)
+            self.tidy(request, test_ids)
+
+    def tidy(self, request: HttpRequest, test_ids: Iterable[int]) -> None:
+        for quiz in Test.objects.filter(pk__in=test_ids):
+            if after_questions_removed(quiz):
+                self.message_user(
+                    request,
+                    f"В тесте «{quiz.title}» не осталось вопросов — он скрыт с сайта.",
+                    messages.WARNING,
+                )

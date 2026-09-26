@@ -10,6 +10,7 @@ from typing import Any
 import pytest
 from django.contrib.admin.sites import site
 from django.contrib.auth.models import Group, Permission, User
+from django.core.files.base import ContentFile
 from django.core.management import call_command
 from django.db import connection
 from django.test import Client
@@ -315,6 +316,105 @@ def test_existing_question_keeps_its_options(admin_client: Client) -> None:
     assert response.status_code == 302
     assert Question.objects.get(pk=question.pk).text == "Новый текст"
     assert AnswerOption.objects.filter(question=question).count() == 2
+
+
+def test_admin_hides_a_test_left_without_questions(admin_client: Client) -> None:
+    """Удалили в админке последний вопрос — тест уходит с сайта, как и в студии.
+
+    Иначе фронт получил бы тест, в котором нечего проходить.
+    """
+    question = QuestionFactory.create(test__is_active=True)
+    quiz = question.test
+
+    response = admin_client.post(
+        reverse("admin:quizzes_question_delete", args=[question.pk]), data={"post": "yes"}
+    )
+
+    assert response.status_code == 302
+    assert Test.objects.get(pk=quiz.pk).is_active is False
+
+
+def test_admin_hides_tests_emptied_by_bulk_delete(admin_client: Client) -> None:
+    """Массовое удаление из списка вопросов подчиняется тому же правилу."""
+    emptied = TestFactory.create(is_active=True)
+    kept = TestFactory.create(is_active=True)
+    doomed = QuestionFactory.create_batch(2, test=emptied)
+    doomed.append(QuestionFactory.create(test=kept, position=1))
+    QuestionFactory.create(test=kept, position=2)
+
+    response = admin_client.post(
+        reverse("admin:quizzes_question_changelist"),
+        data={
+            "action": "delete_selected",
+            "_selected_action": [str(question.pk) for question in doomed],
+            "post": "yes",
+        },
+    )
+
+    assert response.status_code == 302
+    assert Test.objects.get(pk=emptied.pk).is_active is False
+    assert Test.objects.get(pk=kept.pk).is_active is True
+    assert list(Question.objects.filter(test=kept).values_list("position", flat=True)) == [1]
+
+
+def test_admin_renumbers_after_deleting_a_question(admin_client: Client) -> None:
+    """Номера идут подряд, как после удаления в студии: «1, 2, 4» сбивает с толку."""
+    quiz = TestFactory.create()
+    first, second, third = (QuestionFactory.create(test=quiz, position=n) for n in (1, 2, 3))
+
+    admin_client.post(
+        reverse("admin:quizzes_question_delete", args=[second.pk]), data={"post": "yes"}
+    )
+
+    positions = dict(Question.objects.filter(test=quiz).values_list("pk", "position"))
+    assert positions == {first.pk: 1, third.pk: 2}
+
+
+def test_admin_hides_a_test_whose_last_question_moved_away(admin_client: Client) -> None:
+    """Перенос единственного вопроса в другой тест тоже оставляет тест пустым."""
+    question = QuestionFactory.create(test__is_active=True, position=1)
+    source = question.test
+    target = TestFactory.create(is_active=False)
+    option = AnswerOptionFactory.create(question=question, text="Четыре", is_correct=True)
+    other = AnswerOptionFactory.create(question=question, text="Пять")
+
+    response = admin_client.post(
+        reverse("admin:quizzes_question_change", args=[question.pk]),
+        data={
+            "test": str(target.pk),
+            "text": question.text,
+            "type": Question.Type.SINGLE,
+            "position": "1",
+            "_save": "Сохранить",
+            **management_form("options", total=2, initial=2),
+            "options-0-id": str(option.pk),
+            "options-0-text": option.text,
+            "options-0-is_correct": "on",
+            "options-1-id": str(other.pk),
+            "options-1-text": other.text,
+        },
+    )
+
+    assert response.status_code == 302
+    assert Question.objects.get(pk=question.pk).test == target
+    assert Test.objects.get(pk=source.pk).is_active is False
+
+
+def test_admin_links_the_source_file_through_the_studio(
+    admin_client: Client, settings: Settings, tmp_path: Path
+) -> None:
+    """Исходник в админке — ссылка на скачивание из студии, а не прямой адрес в медиа.
+
+    Прямой адрес nginx не отдаёт: в файле верные ответы.
+    """
+    settings.MEDIA_ROOT = tmp_path
+    quiz = TestFactory.create(is_active=False)
+    quiz.questions_file.save("matematika.json", ContentFile(b'{"questions": []}'))
+
+    page = admin_client.get(reverse("admin:quizzes_test_change", args=[quiz.pk])).content.decode()
+
+    assert reverse("studio:test-file", args=[quiz.pk]) in page
+    assert "/media/tests/" not in page
 
 
 def test_content_group_gets_rights_only_for_domain_apps() -> None:

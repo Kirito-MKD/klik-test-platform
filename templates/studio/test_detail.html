@@ -74,7 +74,8 @@
     <p class="card__lead">
       Файл разбирается целиком до первой записи в базу: если в нём ошибка, прежние вопросы останутся на месте.
       {% if quiz.questions_file %}
-        <br>Последний загруженный файл: <code>{{ quiz.questions_file.name }}</code>.
+        <br>Последний загруженный файл:
+        <a href="{% url 'studio:test-file' quiz.pk %}"><code>{{ quiz.questions_file.name }}</code></a>.
       {% endif %}
     </p>
 

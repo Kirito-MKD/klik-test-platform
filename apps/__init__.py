@@ -1,5 +1,6 @@
 """Доменные приложения KLIK.
 
-catalog (Category, Module) и quizzes (Test, Question, AnswerOption) появятся
-на этапе 02, api/v1 — на этапе 05.
+catalog — категории и блоки, quizzes — тесты, вопросы и варианты ответа,
+api — публичное API для фронта, studio — страницы контент-менеджера,
+common — общие модели и хелперы.
 """
